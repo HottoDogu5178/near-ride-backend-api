@@ -13,6 +13,24 @@ chat_rooms_ws = {}  # {room_id: List[WebSocket]}
 
 @router.websocket("/ws")
 async def chat_gateway(websocket: WebSocket, db: Session = Depends(get_db)):
+            elif msg_type == "connect_response":
+                # 處理用戶之間的連線請求回應
+                from_user = data.get("from")
+                to_user = data.get("to")
+                accept = data.get("accept")
+                response = json.dumps({
+                    "type": "connect_response",
+                    "from": from_user,
+                    "to": to_user,
+                    "accept": accept
+                })
+                # 廣播給所有房間內所有連線（可依需求調整）
+                for ws_list in chat_rooms_ws.values():
+                    for ws in ws_list:
+                        try:
+                            await ws.send_text(response)
+                        except Exception:
+                            pass
     await websocket.accept()
     joined_room = None  # 當前連線所屬的房間
 
