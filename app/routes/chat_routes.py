@@ -55,9 +55,25 @@ async def chat_gateway(websocket: WebSocket, db: Session = Depends(get_db)):
 
             elif msg_type == "message":
                 room_id = data.get("roomId")
-                if room_id and room_id in chat_rooms_ws:
-                    # 同前：儲存並廣播訊息
-                    ...
+                sender = data.get("sender")
+                content = data.get("content")
+                if room_id and room_id in chat_rooms_ws and sender and content:
+                    # 儲存訊息到資料庫
+                    chat_msg = ChatMessage(room_id=room_id, sender=sender, content=content)
+                    db.add(chat_msg)
+                    db.commit()
+                    # 廣播訊息給房間內所有連線
+                    msg = json.dumps({
+                        "type": "message",
+                        "roomId": room_id,
+                        "sender": sender,
+                        "content": content
+                    })
+                    for ws in chat_rooms_ws[room_id]:
+                        try:
+                            await ws.send_text(msg)
+                        except Exception:
+                            pass  # 可加強錯誤處理
 
     except WebSocketDisconnect:
         if joined_room and websocket in chat_rooms_ws.get(joined_room, []):
