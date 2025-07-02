@@ -1,36 +1,64 @@
+import json
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Depends
 from sqlalchemy.orm import Session
-from typing import Dict, List
 from app.database import get_db
 from app.models.chat import ChatMessage
 
 router = APIRouter()
 
-# 儲存聊天室內的所有 WebSocket 連線
-chat_rooms: Dict[str, List[WebSocket]] = {}
+import uuid
+from app.models.room import ChatRoom
 
-@router.websocket("/ws/chat/{room_id}/{sender_id}")
-async def websocket_chat(websocket: WebSocket, room_id: str, sender_id: str, db: Session = Depends(get_db)):
+chat_rooms_ws = {}  # {room_id: List[WebSocket]}
+
+@router.websocket("/ws")
+async def chat_gateway(websocket: WebSocket, db: Session = Depends(get_db)):
     await websocket.accept()
-
-    # 建立聊天室列表
-    if room_id not in chat_rooms:
-        chat_rooms[room_id] = []
-    chat_rooms[room_id].append(websocket)
+    joined_room = None  # 當前連線所屬的房間
 
     try:
         while True:
-            message = await websocket.receive_text()
+            raw = await websocket.receive_text()
+            data = json.loads(raw)
+            msg_type = data.get("type")
 
-            # 儲存訊息到資料庫
-            db_msg = ChatMessage(room_id=room_id, sender_id=sender_id, message=message)
-            db.add(db_msg)
-            db.commit()
+            if msg_type == "create_room":
+                # 產生唯一房間 ID
+                room_id = str(uuid.uuid4())[:8]
+                db.add(ChatRoom(id=room_id, name=data.get("name")))
+                db.commit()
+                await websocket.send_text(json.dumps({
+                    "type": "room_created",
+                    "roomId": room_id
+                }))
 
-            # 推送給聊天室內的所有人
-            for connection in chat_rooms[room_id]:
-                if connection != websocket:
-                    await connection.send_text(f"{sender_id}: {message}")
+            elif msg_type == "join_room":
+                room_id = data.get("roomId")
+                if room_id not in chat_rooms_ws:
+                    chat_rooms_ws[room_id] = []
+                chat_rooms_ws[room_id].append(websocket)
+                joined_room = room_id
+                await websocket.send_text(json.dumps({
+                    "type": "joined_room",
+                    "roomId": room_id
+                }))
+
+            elif msg_type == "leave_room":
+                room_id = data.get("roomId")
+                if room_id in chat_rooms_ws and websocket in chat_rooms_ws[room_id]:
+                    chat_rooms_ws[room_id].remove(websocket)
+                    joined_room = None
+                    await websocket.send_text(json.dumps({
+                        "type": "left_room",
+                        "roomId": room_id
+                    }))
+
+            elif msg_type == "message":
+                room_id = data.get("roomId")
+                if room_id and room_id in chat_rooms_ws:
+                    # 同前：儲存並廣播訊息
+                    ...
+
     except WebSocketDisconnect:
-        print(f"User {sender_id} disconnected from room {room_id}")
-        chat_rooms[room_id].remove(websocket)
+        if joined_room and websocket in chat_rooms_ws.get(joined_room, []):
+            chat_rooms_ws[joined_room].remove(websocket)
