@@ -4,6 +4,8 @@ from app.routes import user_routes, chat_routes
 from app.database import create_tables
 import app.models.chat  # ← 加這行才會建立 chat_messages 表
 import app.models.user_status  # ← 加這行才會建立 user_status 表
+import app.models.hobby  # ← 加這行才會建立 hobbies 表
+import app.models.commute_route  # ← 加這行才會建立 commute_routes 表
 import logging
 
 # 設定 logging

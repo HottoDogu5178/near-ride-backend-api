@@ -13,4 +13,4 @@ class UserStatus(Base):
     connected_at = Column(DateTime(timezone=True), nullable=True)
     
     # 建立關聯
-    user = relationship("User")
+    user = relationship("User", back_populates="status")
