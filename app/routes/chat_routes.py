@@ -34,7 +34,7 @@ async def chat_gateway(websocket: WebSocket, db: Session = Depends(get_db)):
                     if user_id:
                         current_user_id = user_id
                         logger.info(f"User registered: {user_id}")
-                        await connection_manager.connect_user(user_id, websocket)
+                        await connection_manager.connect_user(user_id, websocket, db)
 
                 elif msg_type == "create_room":
                     room_id = str(uuid.uuid4())[:8]
@@ -142,7 +142,7 @@ async def chat_gateway(websocket: WebSocket, db: Session = Depends(get_db)):
     except WebSocketDisconnect:
         logger.info(f"WebSocket disconnected for user: {current_user_id}")
         if current_user_id:
-            connection_manager.disconnect_user(current_user_id)
+            await connection_manager.disconnect_user(current_user_id, db)
     except Exception as e:
         logger.error(f"Unexpected error in WebSocket: {str(e)}")
         try:
