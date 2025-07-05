@@ -110,12 +110,17 @@ class ConnectionManager:
         """發送訊息給特定用戶"""
         if user_id in self.user_connections:
             try:
-                await self.user_connections[user_id].send_text(json.dumps(message))
+                message_str = json.dumps(message)
+                logger.info(f"Sending message to user {user_id}: {message_str}")
+                await self.user_connections[user_id].send_text(message_str)
                 return True
-            except Exception:
+            except Exception as e:
+                logger.error(f"Failed to send message to user {user_id}: {e}")
                 # 清除無效連線
                 await self.disconnect_user(user_id)
                 return False
+        else:
+            logger.warning(f"User {user_id} not found in connections when trying to send: {message}")
         return False
     
     async def send_to_users(self, user_ids: List[str], message: dict):
@@ -129,15 +134,18 @@ class ConnectionManager:
     async def broadcast_to_room(self, room_id: str, message: dict):
         """廣播訊息給房間內所有用戶"""
         if room_id not in self.room_connections:
+            logger.warning(f"Room {room_id} not found when trying to broadcast: {message}")
             return
         
         message_str = json.dumps(message)
+        logger.info(f"Broadcasting to room {room_id}: {message_str}")
         disconnected_sockets = []
         
         for websocket in self.room_connections[room_id]:
             try:
                 await websocket.send_text(message_str)
-            except Exception:
+            except Exception as e:
+                logger.error(f"Failed to send message to websocket in room {room_id}: {e}")
                 disconnected_sockets.append(websocket)
         
         # 清理無效連線
