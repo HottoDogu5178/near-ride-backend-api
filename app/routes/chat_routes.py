@@ -32,9 +32,9 @@ async def chat_gateway(websocket: WebSocket, db: Session = Depends(get_db)):
                 if msg_type == "register_user":
                     user_id = data.get("userId")
                     if user_id:
-                        current_user_id = user_id
+                        current_user_id = str(user_id)  # 確保是字串型別
                         logger.info(f"User registered: {user_id}")
-                        await connection_manager.connect_user(user_id, websocket, db)
+                        await connection_manager.connect_user(current_user_id, websocket, db)
 
                 elif msg_type == "create_room":
                     room_id = str(uuid.uuid4())[:8]
@@ -63,6 +63,9 @@ async def chat_gateway(websocket: WebSocket, db: Session = Depends(get_db)):
                     room_id = data.get("roomId")
                     sender = data.get("sender")
                     content = data.get("content")
+                    msg_id = data.get("id")
+                    timestamp = data.get("timestamp")
+                    image_url = data.get("imageUrl")
                     
                     if room_id and sender and content:
                         # 儲存訊息到資料庫
@@ -70,13 +73,24 @@ async def chat_gateway(websocket: WebSocket, db: Session = Depends(get_db)):
                         db.add(chat_msg)
                         db.commit()
                         
-                        # 廣播訊息給房間內所有用戶
-                        await connection_manager.broadcast_to_room(room_id, {
+                        # 建立回應訊息，包含所有欄位
+                        response_message = {
                             "type": "message",
                             "roomId": room_id,
                             "sender": sender,
                             "content": content
-                        })
+                        }
+                        
+                        # 如果有額外欄位，也加入回應
+                        if msg_id:
+                            response_message["id"] = msg_id
+                        if timestamp:
+                            response_message["timestamp"] = timestamp
+                        if image_url is not None:
+                            response_message["imageUrl"] = image_url
+                        
+                        # 廣播訊息給房間內所有用戶
+                        await connection_manager.broadcast_to_room(room_id, response_message)
 
                 elif msg_type == "connect_request":
                     from_user = data.get("from")
@@ -145,6 +159,11 @@ async def chat_gateway(websocket: WebSocket, db: Session = Depends(get_db)):
             await connection_manager.disconnect_user(current_user_id, db)
     except Exception as e:
         logger.error(f"Unexpected error in WebSocket: {str(e)}")
+        if current_user_id:
+            try:
+                await connection_manager.disconnect_user(current_user_id, db)
+            except Exception as disconnect_error:
+                logger.error(f"Error during disconnect: {disconnect_error}")
         try:
             await websocket.send_text(json.dumps({
                 "type": "error",
