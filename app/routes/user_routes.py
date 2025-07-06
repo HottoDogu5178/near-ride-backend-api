@@ -44,7 +44,7 @@ def create_user(user_data: UserCreate, db: Session = Depends(get_db)):
         db.commit()
         
         logger.info(f"New user registered: ID {new_user.id}, email: {new_user.email}")
-        return {"id": new_user.id, "email": new_user.email}
+        return {"id": str(new_user.id), "email": new_user.email}
     
     except Exception as e:
         logger.error(f"User registration failed: {e}")
@@ -57,7 +57,7 @@ def get_user(user_id: int, db: Session = Depends(get_db)):
     db_user = db.query(user.User).filter(user.User.id == user_id).first()
     if not db_user:
         raise HTTPException(status_code=404, detail="User not found")
-    return {"id": db_user.id, "email": db_user.email}
+    return {"id": str(db_user.id), "email": db_user.email}
 
 # 2. 編輯使用者資料
 @router.patch("/{user_id}")
@@ -71,7 +71,7 @@ def update_user(user_id: int, user_update: UserUpdate, db: Session = Depends(get
         setattr(db_user, 'password', user_update.password)
     db.commit()
     db.refresh(db_user)
-    return {"id": db_user.id, "email": db_user.email}
+    return {"id": str(db_user.id), "email": db_user.email}
 
 # 3. 使用者登入
 @router.post("/login")
@@ -110,7 +110,7 @@ def login_user(login_data: UserLogin, db: Session = Depends(get_db)):
         return {
             "message": "登入成功",
             "user": {
-                "id": db_user.id,
+                "id": str(db_user.id),
                 "email": db_user.email
             }
         }
