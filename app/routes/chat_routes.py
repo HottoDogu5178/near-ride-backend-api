@@ -32,9 +32,19 @@ async def chat_gateway(websocket: WebSocket, db: Session = Depends(get_db)):
                 if msg_type == "register_user":
                     user_id = data.get("userId")
                     if user_id:
-                        current_user_id = str(user_id)  # 確保是字串型別
-                        logger.info(f"User registered: {user_id}")
-                        await connection_manager.connect_user(current_user_id, websocket, db)
+                        # 驗證用戶是否存在
+                        from app.models.user import User
+                        user_exists = db.query(User).filter(User.id == int(user_id)).first()
+                        if user_exists:
+                            current_user_id = str(user_id)
+                            logger.info(f"User registered: {user_id}")
+                            await connection_manager.connect_user(current_user_id, websocket, db)
+                        else:
+                            logger.warning(f"Invalid user registration attempt: {user_id}")
+                            await websocket.send_text(json.dumps({
+                                "type": "error",
+                                "message": "Invalid user ID. Please login first."
+                            }))
 
                 elif msg_type == "create_room":
                     room_id = str(uuid.uuid4())[:8]

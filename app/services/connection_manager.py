@@ -36,6 +36,16 @@ class ConnectionManager:
     async def update_user_status_in_db(self, db: Session, user_id: int, status: str):
         """更新用戶在資料庫中的狀態"""
         try:
+            # 首先檢查用戶是否存在於 users 表中
+            from app.models.user import User
+            user_exists = db.query(User).filter(User.id == user_id).first()
+            
+            if not user_exists:
+                logger.warning(f"User {user_id} does not exist in users table, skipping status update")
+                return
+            
+            logger.info(f"User {user_id} exists, proceeding with status update to {status}")
+            
             # 查找或建立用戶狀態記錄
             user_status = db.query(UserStatus).filter(UserStatus.user_id == user_id).first()
             
@@ -47,6 +57,12 @@ class ConnectionManager:
                     setattr(user_status, 'connected_at', datetime.now())
                 logger.info(f"Updated user {user_id} status to {status}")
             else:
+                # 再次確認用戶存在後才建立新記錄
+                user_check = db.query(User).filter(User.id == user_id).first()
+                if not user_check:
+                    logger.error(f"User {user_id} was deleted between checks, aborting status creation")
+                    return
+                
                 # 建立新記錄
                 user_status = UserStatus(
                     user_id=user_id,
@@ -58,9 +74,18 @@ class ConnectionManager:
                 logger.info(f"Created new user status record for user {user_id}")
             
             db.commit()
+            logger.info(f"Successfully committed status update for user {user_id}")
+            
         except Exception as e:
-            logger.error(f"Failed to update user status in database: {e}")
+            logger.error(f"Failed to update user status in database for user {user_id}: {e}")
             db.rollback()
+            # 如果是外鍵錯誤，額外記錄詳細信息
+            if "ForeignKeyViolation" in str(e):
+                logger.error(f"Foreign key violation: User {user_id} does not exist in users table")
+                # 可以選擇從連線中移除該用戶
+                if str(user_id) in self.user_connections:
+                    logger.info(f"Removing invalid user {user_id} from connections")
+                    del self.user_connections[str(user_id)]
     
     async def disconnect_user(self, user_id: str, db: Optional[Session] = None):
         """斷開用戶連線"""
