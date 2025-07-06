@@ -91,6 +91,12 @@ async def chat_gateway(websocket: WebSocket, db: Session = Depends(get_db)):
                             chat_msg = ChatMessage(room_id=room_id, sender_id=sender_for_db, content=content)
                             db.add(chat_msg)
                             db.commit()
+                            
+                            # 確保發送者已加入房間（自動加入機制）
+                            if current_user_id and current_user_id not in connection_manager.user_rooms:
+                                logger.info(f"Auto-joining user {current_user_id} to room {room_id}")
+                                await connection_manager.join_room(current_user_id, room_id)
+                            
                         except ValueError as ve:
                             logger.error(f"Invalid sender format: {sender}, error: {ve}")
                             await websocket.send_text(json.dumps({
