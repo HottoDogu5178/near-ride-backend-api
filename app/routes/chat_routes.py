@@ -78,10 +78,33 @@ async def chat_gateway(websocket: WebSocket, db: Session = Depends(get_db)):
                     image_url = data.get("imageUrl")
                     
                     if room_id and sender and content:
-                        # 儲存訊息到資料庫
-                        chat_msg = ChatMessage(room_id=room_id, sender=sender, content=content)
-                        db.add(chat_msg)
-                        db.commit()
+                        try:
+                            # 確保 sender 轉換為正確的類型
+                            if isinstance(sender, str) and sender.isdigit():
+                                sender_for_db = int(sender)
+                            elif isinstance(sender, int):
+                                sender_for_db = sender
+                            else:
+                                raise ValueError(f"Invalid sender format: {sender}")
+                            
+                            # 儲存訊息到資料庫
+                            chat_msg = ChatMessage(room_id=room_id, sender=sender_for_db, content=content)
+                            db.add(chat_msg)
+                            db.commit()
+                        except ValueError as ve:
+                            logger.error(f"Invalid sender format: {sender}, error: {ve}")
+                            await websocket.send_text(json.dumps({
+                                "type": "error",
+                                "message": f"Invalid sender format: {sender}"
+                            }))
+                            continue
+                        except Exception as e:
+                            logger.error(f"Error saving message: {e}")
+                            await websocket.send_text(json.dumps({
+                                "type": "error",
+                                "message": "Failed to save message"
+                            }))
+                            continue
                         
                         # 建立回應訊息，包含所有欄位
                         response_message = {
