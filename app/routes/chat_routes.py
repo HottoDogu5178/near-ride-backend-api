@@ -17,17 +17,18 @@ router = APIRouter()
 async def chat_gateway(websocket: WebSocket, db: Session = Depends(get_db)):
     await websocket.accept()
     current_user_id = None
-    logger.info(f"WebSocket connection established")
+    connection_id = id(websocket)  # 為每個連線生成唯一 ID
+    logger.info(f"WebSocket connection established, connection_id: {connection_id}")
 
     try:
         while True:
             raw = await websocket.receive_text()
-            logger.info(f"Received message: {raw}")
+            logger.info(f"[Connection {connection_id}] Received message: {raw}")
             
             try:
                 data = json.loads(raw)
                 msg_type = data.get("type")
-                logger.info(f"Processing message type: {msg_type} from user: {current_user_id}")
+                logger.info(f"[Connection {connection_id}] Processing message type: {msg_type} from user: {current_user_id}")
 
                 if msg_type == "register_user":
                     user_id = data.get("userId")
@@ -37,16 +38,23 @@ async def chat_gateway(websocket: WebSocket, db: Session = Depends(get_db)):
                         user_exists = db.query(User).filter(User.id == int(user_id)).first()
                         if user_exists:
                             current_user_id = str(user_id)
-                            logger.info(f"User registered: {user_id}")
+                            logger.info(f"[Connection {connection_id}] User registered: {user_id}")
                             await connection_manager.connect_user(current_user_id, websocket, db)
                         else:
-                            logger.warning(f"Invalid user registration attempt: {user_id}")
+                            logger.warning(f"[Connection {connection_id}] Invalid user registration attempt: {user_id}")
                             await websocket.send_text(json.dumps({
                                 "type": "error",
                                 "message": "Invalid user ID. Please login first."
                             }))
 
                 elif msg_type == "create_room":
+                    if not current_user_id:
+                        await websocket.send_text(json.dumps({
+                            "type": "error",
+                            "message": "Please register user first before creating room"
+                        }))
+                        continue
+                        
                     room_id = str(uuid.uuid4())[:8]
                     db.add(ChatRoom(id=room_id, name=data.get("name")))
                     db.commit()
@@ -56,11 +64,25 @@ async def chat_gateway(websocket: WebSocket, db: Session = Depends(get_db)):
                     }))
 
                 elif msg_type == "join_room":
+                    if not current_user_id:
+                        await websocket.send_text(json.dumps({
+                            "type": "error",
+                            "message": "Please register user first before joining room"
+                        }))
+                        continue
+                        
                     room_id = data.get("roomId")
                     if current_user_id:
                         await connection_manager.join_room(current_user_id, room_id)
 
                 elif msg_type == "leave_room":
+                    if not current_user_id:
+                        await websocket.send_text(json.dumps({
+                            "type": "error",
+                            "message": "Please register user first"
+                        }))
+                        continue
+                        
                     room_id = data.get("roomId")
                     if current_user_id:
                         connection_manager.leave_room(current_user_id, room_id)
@@ -70,6 +92,12 @@ async def chat_gateway(websocket: WebSocket, db: Session = Depends(get_db)):
                         })
 
                 elif msg_type == "message":
+                    if not current_user_id:
+                        await websocket.send_text(json.dumps({
+                            "type": "error",
+                            "message": "Please register user first before sending messages"
+                        }))
+                        continue
                     room_id = data.get("roomId")
                     sender = data.get("sender")
                     content = data.get("content")
@@ -132,8 +160,24 @@ async def chat_gateway(websocket: WebSocket, db: Session = Depends(get_db)):
                         await connection_manager.broadcast_to_room(room_id, response_message)
 
                 elif msg_type == "connect_request":
+                    if not current_user_id:
+                        logger.warning(f"[Connection {connection_id}] Connect request without user registration")
+                        await websocket.send_text(json.dumps({
+                            "type": "error",
+                            "message": "Please register user first before sending connect request"
+                        }))
+                        continue
+                        
                     from_user = data.get("from")
                     to_user = data.get("to")
+                    
+                    # 驗證 from_user 是否與當前註冊的用戶一致
+                    if from_user != current_user_id:
+                        await websocket.send_text(json.dumps({
+                            "type": "error",
+                            "message": f"from_user ({from_user}) must match registered user ({current_user_id})"
+                        }))
+                        continue
                     
                     if to_user == "0000":
                         # 虛擬用戶自動接受
@@ -152,6 +196,12 @@ async def chat_gateway(websocket: WebSocket, db: Session = Depends(get_db)):
                         })
 
                 elif msg_type == "connect_response":
+                    if not current_user_id:
+                        await websocket.send_text(json.dumps({
+                            "type": "error",
+                            "message": "Please register user first before sending connect response"
+                        }))
+                        continue
                     from_user = data.get("from")
                     to_user = data.get("to")
                     accept = data.get("accept")
@@ -193,16 +243,16 @@ async def chat_gateway(websocket: WebSocket, db: Session = Depends(get_db)):
                 }))
 
     except WebSocketDisconnect:
-        logger.info(f"WebSocket disconnected for user: {current_user_id}")
+        logger.info(f"[Connection {connection_id}] WebSocket disconnected for user: {current_user_id}")
         if current_user_id:
             await connection_manager.disconnect_user(current_user_id, db)
     except Exception as e:
-        logger.error(f"Unexpected error in WebSocket: {str(e)}")
+        logger.error(f"[Connection {connection_id}] Unexpected error in WebSocket: {str(e)}")
         if current_user_id:
             try:
                 await connection_manager.disconnect_user(current_user_id, db)
             except Exception as disconnect_error:
-                logger.error(f"Error during disconnect: {disconnect_error}")
+                logger.error(f"[Connection {connection_id}] Error during disconnect: {disconnect_error}")
         try:
             await websocket.send_text(json.dumps({
                 "type": "error",
