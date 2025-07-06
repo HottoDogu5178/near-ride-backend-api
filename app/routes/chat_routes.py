@@ -88,7 +88,7 @@ async def chat_gateway(websocket: WebSocket, db: Session = Depends(get_db)):
                                 raise ValueError(f"Invalid sender format: {sender}")
                             
                             # 儲存訊息到資料庫
-                            chat_msg = ChatMessage(room_id=room_id, sender=sender_for_db, content=content)
+                            chat_msg = ChatMessage(room_id=room_id, sender_id=sender_for_db, content=content)
                             db.add(chat_msg)
                             db.commit()
                         except ValueError as ve:
