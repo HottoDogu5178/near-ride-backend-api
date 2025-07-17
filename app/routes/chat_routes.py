@@ -61,34 +61,33 @@ async def get_chat_history(room_id: str, db: Session, limit: int = 50) -> list:
     """獲取聊天記錄"""
     chat_history = db.query(ChatMessage).filter(
         ChatMessage.room_id == room_id
-    ).order_by(ChatMessage.timestamp.desc()).limit(limit).all()
+    ).order_by(ChatMessage.timestamp.asc()).limit(limit).all()
     
     return [
         {
             "id": msg.id,
             "type": "text",  # 預設訊息類型
             "content": msg.content,
-            "sender": str(msg.sender_id),
+            "sender": str(msg.sender_id),  # 修正欄位名稱
             "timestamp": msg.timestamp.isoformat(),
             "image_url": msg.image_url
         }
-        for msg in reversed(chat_history)
+        for msg in chat_history
     ]
 
 @router.post("/chat_history")
 async def get_chat_history_endpoint(request: ChatHistoryRequest, db: Session = Depends(get_db)):
     """主動回傳聊天室歷史記錄"""
     try:
-        # 檢查聊天室是否存在
         room = db.query(ChatRoom).filter(ChatRoom.id == request.roomId).first()
         if not room:
             raise HTTPException(status_code=404, detail="Chat room not found")
         
-        # 取得聊天記錄
         chat_history = await get_chat_history(request.roomId, db)
-        
-        return chat_history
-        
+        return {
+            "room_id": request.roomId,
+            "messages": chat_history
+        }
     except HTTPException:
         raise
     except Exception as e:
