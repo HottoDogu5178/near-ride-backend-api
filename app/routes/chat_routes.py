@@ -66,9 +66,9 @@ async def get_chat_history(room_id: str, db: Session, limit: int = 50) -> list:
     return [
         {
             "id": msg.id,
-            "type": "text",  # 預設訊息類型
+            "type": "text",
             "content": msg.content,
-            "sender": str(msg.sender),  # 修正欄位名稱
+            "sender": str(msg.sender_id),
             "timestamp": msg.timestamp.isoformat(),
             "image_url": msg.image_url
         }
