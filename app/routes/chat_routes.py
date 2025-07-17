@@ -87,10 +87,7 @@ async def get_chat_history_endpoint(request: ChatHistoryRequest, db: Session = D
         # 取得聊天記錄
         chat_history = await get_chat_history(request.roomId, db)
         
-        return {
-            "roomId": request.roomId,
-            "messages": chat_history
-        }
+        return chat_history
         
     except HTTPException:
         raise
