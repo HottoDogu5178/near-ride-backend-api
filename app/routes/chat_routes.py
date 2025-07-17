@@ -1,8 +1,9 @@
 import json
 import uuid
 import logging
-from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Depends
+from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Depends, HTTPException
 from sqlalchemy.orm import Session
+from pydantic import BaseModel
 from app.database import get_db
 from app.models.chat import ChatMessage
 from app.models.room import ChatRoom
@@ -13,6 +14,9 @@ from app.services.connection_manager import connection_manager
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
+
+class ChatHistoryRequest(BaseModel):
+    roomId: str
 
 def generate_friend_room_id(user_id: int, friend_id: int) -> str:
     """生成固定的聊天室 ID"""
@@ -62,13 +66,37 @@ async def get_chat_history(room_id: str, db: Session, limit: int = 50) -> list:
     return [
         {
             "id": msg.id,
-            "sender": str(msg.sender_id),
+            "type": "text",  # 預設訊息類型
             "content": msg.content,
+            "sender": str(msg.sender_id),
             "timestamp": msg.timestamp.isoformat(),
             "image_url": msg.image_url
         }
         for msg in reversed(chat_history)
     ]
+
+@router.post("/chat_history")
+async def get_chat_history_endpoint(request: ChatHistoryRequest, db: Session = Depends(get_db)):
+    """主動回傳聊天室歷史記錄"""
+    try:
+        # 檢查聊天室是否存在
+        room = db.query(ChatRoom).filter(ChatRoom.id == request.roomId).first()
+        if not room:
+            raise HTTPException(status_code=404, detail="Chat room not found")
+        
+        # 取得聊天記錄
+        chat_history = await get_chat_history(request.roomId, db)
+        
+        return {
+            "roomId": request.roomId,
+            "messages": chat_history
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error getting chat history for room {request.roomId}: {e}")
+        raise HTTPException(status_code=500, detail="Failed to get chat history")
 
 @router.websocket("/ws")
 async def chat_gateway(websocket: WebSocket, db: Session = Depends(get_db)):
@@ -280,11 +308,11 @@ async def chat_gateway(websocket: WebSocket, db: Session = Depends(get_db)):
                             room_id = await add_friend_relationship(from_user_id, to_user_id, db)
                             response_data["roomId"] = room_id
                             
-                            # 取得聊天記錄
-                            chat_history = await get_chat_history(room_id, db)
-                            response_data["chat_history"] = chat_history
+                            # 🚫 取消自動回傳聊天記錄
+                            # chat_history = await get_chat_history(room_id, db)
+                            # response_data["chat_history"] = chat_history
                             
-                            logger.info(f"Connected users {from_user} and {to_user} to room {room_id} with {len(chat_history)} messages")
+                            logger.info(f"Connected users {from_user} and {to_user} to room {room_id}")
                             
                         except ValueError as e:
                             logger.error(f"Error in connect_response: {e}")
