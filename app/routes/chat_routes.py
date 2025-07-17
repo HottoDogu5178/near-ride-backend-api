@@ -6,12 +6,69 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app.models.chat import ChatMessage
 from app.models.room import ChatRoom
+from app.models.user import User
 from app.services.connection_manager import connection_manager
 
 # 設定 logger
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
+
+def generate_friend_room_id(user_id: int, friend_id: int) -> str:
+    """生成固定的聊天室 ID"""
+    # 使用較小的 ID 在前面，確保 A-B 和 B-A 產生相同的 room_id
+    smaller_id = min(user_id, friend_id)
+    larger_id = max(user_id, friend_id)
+    return f"friend_{smaller_id}_{larger_id}"
+
+async def add_friend_relationship(user_id: int, friend_id: int, db: Session) -> str:
+    """建立好友關係並創建聊天室"""
+    # 查找用戶
+    user = db.query(User).filter(User.id == user_id).first()
+    friend = db.query(User).filter(User.id == friend_id).first()
+    
+    if not user or not friend:
+        raise ValueError("User not found")
+    
+    # 檢查是否已經是好友
+    if friend not in user.friends:
+        # 建立雙向好友關係
+        user.friends.append(friend)
+        friend.friends.append(user)
+        logger.info(f"Added friend relationship between {user_id} and {friend_id}")
+    
+    # 生成固定聊天室 ID
+    room_id = generate_friend_room_id(user_id, friend_id)
+    
+    # 檢查聊天室是否已存在
+    existing_room = db.query(ChatRoom).filter(ChatRoom.id == room_id).first()
+    
+    if not existing_room:
+        # 建立新聊天室
+        room_name = f"Chat_{min(user_id, friend_id)}_{max(user_id, friend_id)}"
+        new_room = ChatRoom(id=room_id, name=room_name)
+        db.add(new_room)
+        logger.info(f"Created new chat room: {room_id}")
+    
+    db.commit()
+    return room_id
+
+async def get_chat_history(room_id: str, db: Session, limit: int = 50) -> list:
+    """獲取聊天記錄"""
+    chat_history = db.query(ChatMessage).filter(
+        ChatMessage.room_id == room_id
+    ).order_by(ChatMessage.timestamp.desc()).limit(limit).all()
+    
+    return [
+        {
+            "id": msg.id,
+            "sender": str(msg.sender_id),
+            "content": msg.content,
+            "timestamp": msg.timestamp.isoformat(),
+            "image_url": msg.image_url
+        }
+        for msg in reversed(chat_history)
+    ]
 
 @router.websocket("/ws")
 async def chat_gateway(websocket: WebSocket, db: Session = Depends(get_db)):
@@ -214,12 +271,27 @@ async def chat_gateway(websocket: WebSocket, db: Session = Depends(get_db)):
                     }
                     
                     if accept:
-                        # 建立房間
-                        room_id = str(uuid.uuid4())[:8]
-                        room_name = f"Chat_{from_user}_{to_user}"
-                        db.add(ChatRoom(id=room_id, name=room_name))
-                        db.commit()
-                        response_data["roomId"] = room_id
+                        try:
+                            # 轉換為整數 ID
+                            from_user_id = int(from_user)
+                            to_user_id = int(to_user)
+                            
+                            # 建立好友關係並創建/取得聊天室
+                            room_id = await add_friend_relationship(from_user_id, to_user_id, db)
+                            response_data["roomId"] = room_id
+                            
+                            # 取得聊天記錄
+                            chat_history = await get_chat_history(room_id, db)
+                            response_data["chat_history"] = chat_history
+                            
+                            logger.info(f"Connected users {from_user} and {to_user} to room {room_id} with {len(chat_history)} messages")
+                            
+                        except ValueError as e:
+                            logger.error(f"Error in connect_response: {e}")
+                            response_data["error"] = str(e)
+                        except Exception as e:
+                            logger.error(f"Unexpected error in connect_response: {e}")
+                            response_data["error"] = "Failed to create connection"
                     
                     # 發送給雙方用戶
                     await connection_manager.send_to_users([from_user, to_user], response_data)
