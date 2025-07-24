@@ -26,3 +26,71 @@ def create_tables():
     from app.models import user, hobby, user_status, commute_route, room, chat
     Base.metadata.create_all(bind=engine)
 
+def update_database_schema():
+    """
+    檢查並更新資料庫結構，確保所有欄位都存在
+    這個函數會檢查現有表格並新增缺少的欄位
+    """
+    import psycopg2
+    import re
+    
+    # 如果是 SQLite，直接使用 create_all
+    if "sqlite" in DATABASE_URL:
+        create_tables()
+        return
+    
+    # PostgreSQL 的欄位更新
+    try:
+        # 解析 PostgreSQL 連接字串
+        match = re.match(r'postgresql://([^:]+):([^@]+)@([^:]+):(\d+)/(.+)', DATABASE_URL)
+        if not match:
+            print("無法解析 DATABASE_URL")
+            return
+            
+        user, password, host, port, dbname = match.groups()
+        
+        conn = psycopg2.connect(
+            host=host,
+            port=port,
+            user=user,
+            password=password,
+            database=dbname
+        )
+        
+        cur = conn.cursor()
+        
+        # 首先建立基本表格
+        create_tables()
+        
+        # 檢查並新增 users 表格的欄位
+        required_columns = {
+            'gender': 'VARCHAR(20)',
+            'age': 'INTEGER',
+            'location': 'VARCHAR(255)'
+        }
+        
+        # 檢查現有欄位
+        cur.execute("""
+            SELECT column_name 
+            FROM information_schema.columns 
+            WHERE table_name = 'users' AND table_schema = 'public';
+        """)
+        existing_columns = [row[0] for row in cur.fetchall()]
+        
+        # 新增缺少的欄位
+        for column_name, column_type in required_columns.items():
+            if column_name not in existing_columns:
+                cur.execute(f'ALTER TABLE users ADD COLUMN {column_name} {column_type};')
+                print(f'已新增 {column_name} 欄位')
+        
+        conn.commit()
+        cur.close()
+        conn.close()
+        print("資料庫結構更新完成")
+        
+    except Exception as e:
+        print(f"更新資料庫結構時發生錯誤: {e}")
+        if 'conn' in locals():
+            conn.rollback()
+            conn.close()
+
