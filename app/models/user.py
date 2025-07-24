@@ -26,6 +26,9 @@ class User(Base):
     password = Column(String)
     nickname = Column(String, nullable=True)  # 用戶暱稱
     avatar_url = Column(String, nullable=True)  # 用戶頭像圖片 URL
+    gender = Column(String, nullable=True)  # 性別 (male, female, other)
+    age = Column(Integer, nullable=True)  # 年齡
+    location = Column(String, nullable=True)  # 居住地
     
     # 關聯關係
     hobbies = relationship("Hobby", secondary=user_hobbies, back_populates="users")
