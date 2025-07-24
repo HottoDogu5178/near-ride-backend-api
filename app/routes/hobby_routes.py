@@ -38,3 +38,7 @@ def create_hobby(hobby_data: HobbyCreate, db: Session = Depends(get_db)):
     db.refresh(db_hobby)
     
     return HobbyResponse.model_validate(db_hobby)
+
+@router.get("/health")
+def health():
+    return {"fuck"}
