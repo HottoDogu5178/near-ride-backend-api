@@ -1,7 +1,6 @@
 from sqlalchemy import create_engine
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
-from app.models import user
 import os
 from dotenv import load_dotenv
 
@@ -23,5 +22,7 @@ def get_db():
         db.close()
 
 def create_tables():
+    # 在這裡導入所有模型，避免循環導入
+    from app.models import user, hobby, user_status, commute_route, room, chat
     Base.metadata.create_all(bind=engine)
 
