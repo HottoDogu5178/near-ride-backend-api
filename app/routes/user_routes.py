@@ -1,12 +1,14 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
 from app.models import user
 from app.models.user_status import UserStatus
 from app.models.hobby import Hobby
 from app.database import get_db
+from app.services.avatar_service import avatar_service
 from pydantic import BaseModel
+from typing import List, Optional
+from datetime import datetime, date
 import logging
-from datetime import datetime
 
 # 設定 logger
 logger = logging.getLogger(__name__)
@@ -22,14 +24,21 @@ class UserLogin(BaseModel):
     password: str
 
 class UserUpdate(BaseModel):
-    email: str | None = None
-    password: str | None = None
-    nickname: str | None = None
-    avatar_url: str | None = None
-    gender: str | None = None  # male, female, other
-    age: int | None = None
-    location: str | None = None
-    hobby_ids: list[int] | None = None  # 興趣 ID 列表
+    """用戶更新資料模型"""
+    name: Optional[str] = None
+    email: Optional[str] = None
+    birth_date: Optional[date] = None
+    avatar_base64: Optional[str] = None  # 頭像 base64 資料
+    password: Optional[str] = None
+    nickname: Optional[str] = None
+    avatar_url: Optional[str] = None
+    gender: Optional[str] = None
+    age: Optional[int] = None
+    location: Optional[str] = None
+    hobby_ids: Optional[List[int]] = None
+
+class AvatarUpload(BaseModel):
+    avatar_base64: str  # base64 編碼的圖片資料
 
 class HobbyResponse(BaseModel):
     id: int
@@ -109,21 +118,56 @@ def get_user(user_id: int, db: Session = Depends(get_db)):
     return UserResponse.model_validate(user_dict)
 
 # 2. 編輯使用者資料
-@router.patch("/{user_id}", response_model=UserResponse)
-def update_user(user_id: int, user_update: UserUpdate, db: Session = Depends(get_db)):
-    db_user = db.query(user.User).filter(user.User.id == user_id).first()
-    if not db_user:
-        raise HTTPException(status_code=404, detail="User not found")
-    
+@router.put("/{user_id}")
+@router.patch("/{user_id}")
+def update_user(user_id: int, user_update: UserUpdate, request: Request, db: Session = Depends(get_db)):
+    """更新用戶資料（包含頭像上傳）"""
     try:
+        # 檢查用戶是否存在
+        db_user = db.query(user.User).filter(user.User.id == user_id).first()
+        if not db_user:
+            raise HTTPException(status_code=404, detail="用戶不存在")
+        
+        new_avatar_url = None
+        
+        # 處理頭像上傳
+        if user_update.avatar_base64:
+            try:
+                # 使用請求 URL 動態構建頭像 URL
+                request_url = str(request.url)
+                new_avatar_url = avatar_service.save_avatar(
+                    user_update.avatar_base64, 
+                    user_id,
+                    request_url
+                )
+                logger.info(f"New avatar uploaded for user {user_id}: {new_avatar_url}")
+                
+                # 刪除舊頭像（如果存在）
+                old_avatar_url = getattr(db_user, 'avatar_url', None)
+                if old_avatar_url:
+                    avatar_service.delete_avatar(old_avatar_url)
+                    
+            except ValueError as ve:
+                logger.error(f"Avatar validation failed for user {user_id}: {ve}")
+                raise HTTPException(status_code=400, detail=str(ve))
+            except Exception as ae:
+                logger.error(f"Avatar upload failed for user {user_id}: {ae}")
+                raise HTTPException(status_code=500, detail=str(ae))
+
         # 更新基本資料
+        if user_update.name is not None:
+            setattr(db_user, 'name', user_update.name)
         if user_update.email is not None:
             setattr(db_user, 'email', user_update.email)
+        if user_update.birth_date is not None:
+            setattr(db_user, 'birth_date', user_update.birth_date)
         if user_update.password is not None:
             setattr(db_user, 'password', user_update.password)
         if user_update.nickname is not None:
             setattr(db_user, 'nickname', user_update.nickname)
-        if user_update.avatar_url is not None:
+        if new_avatar_url:
+            setattr(db_user, 'avatar_url', new_avatar_url)
+        elif user_update.avatar_url is not None:
             setattr(db_user, 'avatar_url', user_update.avatar_url)
         if user_update.gender is not None:
             setattr(db_user, 'gender', user_update.gender)
@@ -151,28 +195,31 @@ def update_user(user_id: int, user_update: UserUpdate, db: Session = Depends(get
                 id=hobby.id,
                 name=hobby.name,
                 description=hobby.description
-            )
-            for hobby in db_user.hobbies
+            ) for hobby in db_user.hobbies
         ]
         
-        user_dict = {
-            "id": db_user.id,
-            "email": db_user.email,
-            "nickname": db_user.nickname,
-            "avatar_url": db_user.avatar_url,
-            "gender": db_user.gender,
-            "age": db_user.age,
-            "location": db_user.location,
-            "hobbies": hobbies_data
+        return {
+            "message": "用戶資料更新成功",
+            "user": {
+                "id": db_user.id,
+                "name": getattr(db_user, 'name', None),
+                "email": db_user.email,
+                "birth_date": getattr(db_user, 'birth_date', None),
+                "nickname": getattr(db_user, 'nickname', None),
+                "avatar_url": getattr(db_user, 'avatar_url', None),
+                "gender": getattr(db_user, 'gender', None),
+                "age": getattr(db_user, 'age', None),
+                "location": getattr(db_user, 'location', None),
+                "hobbies": hobbies_data
+            }
         }
-        
-        logger.info(f"User {user_id} profile updated successfully")
-        return UserResponse.model_validate(user_dict)
     
+    except HTTPException:
+        raise
     except Exception as e:
-        logger.error(f"User profile update failed: {e}")
+        logger.error(f"Update user error for user {user_id}: {e}")
         db.rollback()
-        raise HTTPException(status_code=500, detail="更新失敗")
+        raise HTTPException(status_code=500, detail="更新用戶資料失敗")
 
 # 3. 使用者登入
 @router.post("/login")
@@ -223,3 +270,109 @@ def login_user(login_data: UserLogin, db: Session = Depends(get_db)):
         # 記錄系統錯誤
         logger.error(f"Login error for email {login_data.email}: {str(e)}")
         raise HTTPException(status_code=500, detail="系統錯誤")
+
+# 4. 上傳用戶頭像
+@router.post("/{user_id}/avatar")
+def upload_avatar(user_id: int, avatar_data: AvatarUpload, request: Request, db: Session = Depends(get_db)):
+    """
+    上傳用戶頭像
+    
+    Args:
+        user_id: 用戶 ID
+        avatar_data: 包含 base64 頭像資料的請求體
+        request: FastAPI 請求對象
+        db: 資料庫會話
+        
+    Returns:
+        dict: 包含新頭像 URL 的回應
+    """
+    try:
+        # 檢查用戶是否存在
+        db_user = db.query(user.User).filter(user.User.id == user_id).first()
+        if not db_user:
+            raise HTTPException(status_code=404, detail="用戶不存在")
+        
+        # 儲存新頭像
+        try:
+            # 使用請求 URL 動態構建頭像 URL
+            request_url = str(request.url)
+            new_avatar_url = avatar_service.save_avatar(
+                avatar_data.avatar_base64, 
+                user_id,
+                request_url
+            )
+            logger.info(f"Avatar uploaded for user {user_id}: {new_avatar_url}")
+        except ValueError as ve:
+            logger.error(f"Avatar validation failed for user {user_id}: {ve}")
+            raise HTTPException(status_code=400, detail=str(ve))
+        except Exception as ae:
+            logger.error(f"Avatar upload failed for user {user_id}: {ae}")
+            raise HTTPException(status_code=500, detail=str(ae))
+        
+        # 刪除舊頭像（如果存在）
+        old_avatar_url = getattr(db_user, 'avatar_url', None)
+        if old_avatar_url:
+            avatar_service.delete_avatar(old_avatar_url)
+        
+        # 更新資料庫中的頭像 URL
+        setattr(db_user, 'avatar_url', new_avatar_url)
+        db.commit()
+        db.refresh(db_user)
+        
+        logger.info(f"Avatar updated successfully for user {user_id}")
+        return {
+            "message": "頭像上傳成功",
+            "avatar_url": new_avatar_url,
+            "user_id": user_id
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Avatar upload error for user {user_id}: {e}")
+        db.rollback()
+        raise HTTPException(status_code=500, detail="頭像上傳失敗")
+
+# 5. 刪除用戶頭像
+@router.delete("/{user_id}/avatar")
+def delete_avatar(user_id: int, db: Session = Depends(get_db)):
+    """
+    刪除用戶頭像
+    
+    Args:
+        user_id: 用戶 ID
+        db: 資料庫會話
+        
+    Returns:
+        dict: 刪除結果
+    """
+    try:
+        # 檢查用戶是否存在
+        db_user = db.query(user.User).filter(user.User.id == user_id).first()
+        if not db_user:
+            raise HTTPException(status_code=404, detail="用戶不存在")
+        
+        # 獲取當前頭像 URL
+        current_avatar_url = getattr(db_user, 'avatar_url', None)
+        if not current_avatar_url:
+            raise HTTPException(status_code=404, detail="用戶沒有設定頭像")
+        
+        # 刪除頭像檔案
+        avatar_service.delete_avatar(current_avatar_url)
+        
+        # 更新資料庫
+        setattr(db_user, 'avatar_url', None)
+        db.commit()
+        
+        logger.info(f"Avatar deleted for user {user_id}")
+        return {
+            "message": "頭像刪除成功",
+            "user_id": user_id
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Avatar deletion error for user {user_id}: {e}")
+        db.rollback()
+        raise HTTPException(status_code=500, detail="頭像刪除失敗")
