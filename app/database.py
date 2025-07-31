@@ -23,7 +23,7 @@ def get_db():
 
 def create_tables():
     # 在這裡導入所有模型，避免循環導入
-    from app.models import user, hobby, user_status, commute_route, room, chat
+    from app.models import user, hobby, user_status, commute_route, room, chat, gps_route
     Base.metadata.create_all(bind=engine)
 
 def update_database_schema():

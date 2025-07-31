@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Text, Table, ForeignKey
+from sqlalchemy import Column, Integer, String, Text, Table, ForeignKey, Float, DateTime
 from sqlalchemy.orm import relationship
 from app.database import Base
 
@@ -38,3 +38,4 @@ class User(Base):
                           secondaryjoin=id == user_friends.c.friend_id)
     commute_routes = relationship("CommuteRoute", back_populates="user")
     status = relationship("UserStatus", back_populates="user")
+    gps_routes = relationship("GPSRoute", back_populates="user")
