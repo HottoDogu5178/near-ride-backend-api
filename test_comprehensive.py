@@ -30,56 +30,108 @@ class APITester:
             return False
 
     def test_gps_functionality(self):
-        """測試 GPS 路線追蹤功能"""
-        print("\n🛣️ 測試 GPS 路線追蹤功能...")
+        """測試增強版 GPS 路線追蹤功能"""
+        print("\n🛣️ 測試增強版 GPS 路線追蹤功能...")
         
         user_id = "1"
         test_date = datetime.now().strftime("%Y-%m-%d")
         
-        # 測試資料
+        # 增強版測試資料（包含海拔、精度、速度、方向）
         test_route_data = {
             "user_id": user_id,
             "date": test_date,
             "route": [
-                {"lat": 25.0478, "lng": 121.5173, "ts": f"{test_date}T08:30:00.000Z"},
-                {"lat": 25.0465, "lng": 121.5168, "ts": f"{test_date}T08:32:00.000Z"},
-                {"lat": 25.0452, "lng": 121.5162, "ts": f"{test_date}T08:34:00.000Z"},
-                {"lat": 25.0340, "lng": 121.5645, "ts": f"{test_date}T08:45:00.000Z"}
+                {
+                    "lat": 25.0478, 
+                    "lng": 121.5173, 
+                    "ts": f"{test_date}T08:30:00.000Z",
+                    "altitude": 10.5,
+                    "accuracy": 5.0,
+                    "speed": 0.0,
+                    "heading": 0.0
+                },
+                {
+                    "lat": 25.0465, 
+                    "lng": 121.5168, 
+                    "ts": f"{test_date}T08:32:00.000Z",
+                    "altitude": 11.2,
+                    "accuracy": 4.0,
+                    "speed": 2.5,
+                    "heading": 90.0
+                },
+                {
+                    "lat": 25.0452, 
+                    "lng": 121.5162, 
+                    "ts": f"{test_date}T08:34:00.000Z",
+                    "altitude": 12.8,
+                    "accuracy": 3.5,
+                    "speed": 5.2,
+                    "heading": 135.0
+                },
+                {
+                    "lat": 25.0340, 
+                    "lng": 121.5645, 
+                    "ts": f"{test_date}T08:45:00.000Z",
+                    "altitude": 25.5,
+                    "accuracy": 2.8,
+                    "speed": 15.8,
+                    "heading": 270.0
+                }
             ]
         }
         
         try:
-            # 1. 上傳 GPS 路線
-            print("📤 測試上傳 GPS 路線...")
+            # 1. 上傳增強版 GPS 路線
+            print("📤 測試上傳增強版 GPS 路線...")
             response = self.session.post(f"{self.base_url}/gps/upload", json=test_route_data)
             if response.status_code == 200:
                 result = response.json()
-                print(f"✅ 上傳成功: {result['point_count']} 個點")
+                print(f"✅ 上傳成功: {result['point_count']} 個點, 距離 {result['total_distance']:.2f}m")
             else:
                 print(f"❌ 上傳失敗: {response.text}")
                 return False
             
-            # 2. 查詢路線
-            print("📥 測試查詢路線...")
+            # 2. 查詢路線統計
+            print("� 測試查詢路線統計...")
             response = self.session.get(f"{self.base_url}/gps/{user_id}/{test_date}")
             if response.status_code == 200:
                 route_data = response.json()
-                print(f"✅ 查詢成功: {len(route_data['route'])} 個點")
+                stats = route_data.get('statistics', {})
+                print(f"✅ 統計查詢成功: {stats.get('total_points', 0)} 點, "
+                      f"{stats.get('total_distance', 0):.1f}m, "
+                      f"{stats.get('duration_minutes', 0):.1f} 分鐘")
             else:
-                print(f"❌ 查詢失敗: {response.text}")
+                print(f"❌ 統計查詢失敗: {response.text}")
                 return False
             
-            # 3. 查詢歷史
+            # 3. 查詢詳細點資料
+            print("🗺️ 測試查詢詳細點資料...")
+            response = self.session.get(f"{self.base_url}/gps/{user_id}/{test_date}/points")
+            if response.status_code == 200:
+                points_data = response.json()
+                points = points_data.get('points', [])
+                print(f"✅ 詳細點資料查詢成功: {len(points)} 個詳細點")
+                if points:
+                    first_point = points[0]
+                    print(f"   第一點: 海拔 {first_point.get('altitude')}m, "
+                          f"精度 {first_point.get('accuracy')}m, "
+                          f"速度 {first_point.get('speed')}m/s")
+            else:
+                print(f"❌ 詳細點資料查詢失敗: {response.text}")
+            
+            # 4. 查詢歷史
             print("📋 測試查詢歷史...")
             response = self.session.get(f"{self.base_url}/gps/{user_id}/routes?limit=5")
             if response.status_code == 200:
                 history = response.json()
                 print(f"✅ 歷史查詢成功: {len(history)} 條記錄")
+                for route in history:
+                    print(f"   {route['date']}: {route['total_distance']:.1f}m, {route['duration_minutes']:.1f}分鐘")
             else:
                 print(f"❌ 歷史查詢失敗: {response.text}")
                 return False
             
-            # 4. 刪除路線
+            # 5. 刪除路線
             print("🗑️ 測試刪除路線...")
             response = self.session.delete(f"{self.base_url}/gps/{user_id}/{test_date}")
             if response.status_code == 200:
