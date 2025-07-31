@@ -38,4 +38,4 @@ class User(Base):
                           secondaryjoin=id == user_friends.c.friend_id)
     commute_routes = relationship("CommuteRoute", back_populates="user")
     status = relationship("UserStatus", back_populates="user")
-    gps_routes = relationship("GPSRoute", back_populates="user")
+    gps_locations = relationship("GPSLocation", back_populates="user")
