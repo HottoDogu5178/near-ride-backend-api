@@ -10,8 +10,6 @@ services:
       pip install --no-cache-dir --only-binary=all -r requirements.txt
     startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
     envVars:
-      - key: PYTHON_VERSION
-        value: "3.11"
       - key: USE_CLOUD_STORAGE
         value: "true"
       - key: CLOUDINARY_URL
