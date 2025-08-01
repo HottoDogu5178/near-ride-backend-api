@@ -1,8 +1,15 @@
 services:
   - type: web
-    name: commute-api
-    env: python
-    buildCommand: "pip install -r requirements.txt"
-    startCommand: "uvicorn app.main:app --host 0.0.0.0 --port 10000"
-    plan: free
-    autoDeploy: true
+    name: near-ride-backend
+    runtime: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11
+      - key: USE_CLOUD_STORAGE
+        value: true
+      - key: CLOUDINARY_URL
+        fromService:
+          type: secret
+          name: cloudinary-url
