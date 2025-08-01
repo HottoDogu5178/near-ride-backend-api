@@ -4,7 +4,7 @@ from app.models import user
 from app.models.user_status import UserStatus
 from app.models.hobby import Hobby
 from app.database import get_db
-from app.services.avatar_service import avatar_service
+from app.services.avatar_service import cloud_avatar_service
 from pydantic import BaseModel
 from typing import List, Optional
 from datetime import datetime, date
@@ -135,7 +135,7 @@ def update_user(user_id: int, user_update: UserUpdate, request: Request, db: Ses
             try:
                 # 使用請求 URL 動態構建頭像 URL
                 request_url = str(request.url)
-                new_avatar_url = avatar_service.save_avatar(
+                new_avatar_url = cloud_avatar_service.save_avatar(
                     user_update.avatar_base64, 
                     user_id,
                     request_url
@@ -145,7 +145,7 @@ def update_user(user_id: int, user_update: UserUpdate, request: Request, db: Ses
                 # 刪除舊頭像（如果存在）
                 old_avatar_url = getattr(db_user, 'avatar_url', None)
                 if old_avatar_url:
-                    avatar_service.delete_avatar(old_avatar_url)
+                    cloud_avatar_service.delete_avatar(old_avatar_url)
                     
             except ValueError as ve:
                 logger.error(f"Avatar validation failed for user {user_id}: {ve}")
@@ -296,7 +296,7 @@ def upload_avatar(user_id: int, avatar_data: AvatarUpload, request: Request, db:
         try:
             # 使用請求 URL 動態構建頭像 URL
             request_url = str(request.url)
-            new_avatar_url = avatar_service.save_avatar(
+            new_avatar_url = cloud_avatar_service.save_avatar(
                 avatar_data.avatar_base64, 
                 user_id,
                 request_url
@@ -312,7 +312,7 @@ def upload_avatar(user_id: int, avatar_data: AvatarUpload, request: Request, db:
         # 刪除舊頭像（如果存在）
         old_avatar_url = getattr(db_user, 'avatar_url', None)
         if old_avatar_url:
-            avatar_service.delete_avatar(old_avatar_url)
+            cloud_avatar_service.delete_avatar(old_avatar_url)
         
         # 更新資料庫中的頭像 URL
         setattr(db_user, 'avatar_url', new_avatar_url)
@@ -358,7 +358,7 @@ def delete_avatar(user_id: int, db: Session = Depends(get_db)):
             raise HTTPException(status_code=404, detail="用戶沒有設定頭像")
         
         # 刪除頭像檔案
-        avatar_service.delete_avatar(current_avatar_url)
+        cloud_avatar_service.delete_avatar(current_avatar_url)
         
         # 更新資料庫
         setattr(db_user, 'avatar_url', None)

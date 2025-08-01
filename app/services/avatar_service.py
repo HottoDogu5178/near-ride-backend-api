@@ -99,13 +99,14 @@ class CloudAvatarService:
     def upload_to_cloudinary(self, image_bytes: BytesIO, user_id: int) -> str:
         """上傳到 Cloudinary"""
         try:
-            import cloudinary.uploader
+            import cloudinary
+            from cloudinary import uploader
             
             # 生成唯一的 public_id
             public_id = f"avatars/user_{user_id}_{uuid.uuid4().hex[:8]}"
             
             # 上傳到 Cloudinary
-            result = cloudinary.uploader.upload(
+            result = uploader.upload(
                 image_bytes,
                 public_id=public_id,
                 resource_type="image",
@@ -179,7 +180,8 @@ class CloudAvatarService:
     def _delete_from_cloudinary(self, avatar_url: str) -> bool:
         """從 Cloudinary 刪除"""
         try:
-            import cloudinary.uploader
+            import cloudinary
+            from cloudinary import uploader
             
             # 從 URL 提取 public_id
             # URL 格式: https://res.cloudinary.com/cloud-name/image/upload/v123456/avatars/user_1_abc123.webp
@@ -189,7 +191,7 @@ class CloudAvatarService:
                 filename = url_parts[avatar_index + 1].split('.')[0]  # 移除副檔名
                 public_id = f"avatars/{filename}"
                 
-                result = cloudinary.uploader.destroy(public_id)
+                result = uploader.destroy(public_id)
                 logger.info(f"Cloudinary 刪除結果: {result}")
                 return result.get('result') == 'ok'
             
