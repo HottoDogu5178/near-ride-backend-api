@@ -28,14 +28,17 @@ class CloudAvatarService:
         # 初始化 Cloudinary
         if self.use_cloud_storage and self.cloudinary_url:
             try:
+                # 延遲匯入，避免安裝問題
                 import cloudinary
                 cloudinary.config(cloudinary_url=self.cloudinary_url)
                 logger.info("Cloudinary 已初始化")
-            except ImportError:
-                logger.error("Cloudinary 套件未安裝")
+            except ImportError as e:
+                logger.error(f"Cloudinary 套件未安裝: {e}")
+                logger.warning("將使用本地儲存作為備用方案")
                 self.use_cloud_storage = False
             except Exception as e:
                 logger.error(f"Cloudinary 初始化失敗: {e}")
+                logger.warning("將使用本地儲存作為備用方案")
                 self.use_cloud_storage = False
         else:
             logger.warning("未啟用雲端儲存，將使用本地儲存（不適用於生產環境）")

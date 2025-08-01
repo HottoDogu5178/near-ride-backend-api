@@ -2,13 +2,18 @@ services:
   - type: web
     name: near-ride-backend
     runtime: python
-    buildCommand: pip install -r requirements.txt
+    env: python
+    region: oregon
+    plan: free
+    buildCommand: |
+      pip install --upgrade pip setuptools wheel
+      pip install --no-cache-dir --only-binary=all -r requirements.txt
     startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
     envVars:
       - key: PYTHON_VERSION
-        value: 3.11
+        value: "3.11"
       - key: USE_CLOUD_STORAGE
-        value: true
+        value: "true"
       - key: CLOUDINARY_URL
         fromService:
           type: secret

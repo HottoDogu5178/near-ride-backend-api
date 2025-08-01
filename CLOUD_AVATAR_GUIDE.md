@@ -1,35 +1,64 @@
-"""
-雲端頭像服務使用指南
+# 雲端頭像服務使用指南
 
 本檔案說明如何在不同環境下使用頭像服務
-"""
 
-# ===== 1. 開發環境設定 =====
+## 🚀 部署解決方案
 
-# 在開發環境中，不設定環境變數會自動使用本地儲存
-# 適用於快速開發和測試
+### 方案 1：Cloudinary（推薦）
+如果 Cloudinary 在 Render 上安裝順利：
 
-print("開發環境使用方式：")
-print("1. 不需要設定任何環境變數")
-print("2. 圖片會儲存在 uploads/avatars/ 或 /tmp/avatars/")
-print("3. 重啟伺服器後圖片仍會保留（本地開發）")
-
-# ===== 2. 生產環境設定 (Cloudinary) =====
-
-# 在生產環境（如 Render）設定環境變數：
-production_env_vars = """
-# 在 Render Dashboard 或 .env 檔案中設定：
+```bash
+# Render 環境變數
 USE_CLOUD_STORAGE=true
 CLOUDINARY_URL=cloudinary://api_key:api_secret@cloud_name
+```
 
-# 替換為您的 Cloudinary 憑證：
-# api_key: 從 Cloudinary Dashboard 獲取
-# api_secret: 從 Cloudinary Dashboard 獲取  
-# cloud_name: 您的 Cloudinary 雲端名稱
-"""
+### 方案 2：Imgur（備用方案）
+如果 Cloudinary 安裝有問題：
 
-print("\n生產環境設定：")
-print(production_env_vars)
+```python
+# 在 user_routes.py 中替換匯入
+from app.services.avatar_service_simple import simple_avatar_service as avatar_service
+
+# Render 環境變數
+IMGUR_CLIENT_ID=your_imgur_client_id
+```
+
+### 方案 3：純本地儲存（開發用）
+不設定任何環境變數，使用本地儲存。
+
+## 📋 Render 部署建議
+
+### 1. 更新的 render.yaml
+```yaml
+services:
+  - type: web
+    name: near-ride-backend
+    runtime: python
+    env: python
+    buildCommand: |
+      pip install --upgrade pip setuptools wheel
+      pip install --no-cache-dir --only-binary=all -r requirements.txt
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: PYTHON_VERSION
+        value: "3.11"
+      - key: USE_CLOUD_STORAGE
+        value: "true"
+```
+
+### 2. 更新的 requirements.txt
+```txt
+fastapi==0.104.1
+uvicorn==0.24.0
+sqlalchemy==2.0.23
+psycopg2-binary==2.9.9
+python-multipart==0.0.6
+pillow==10.1.0
+pydantic==2.5.0
+cloudinary==1.40.0  # 使用更新版本
+requests==2.31.0    # 用於 Imgur 備用方案
+```
 
 # ===== 3. API 使用範例 =====
 
