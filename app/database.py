@@ -2,10 +2,14 @@ from sqlalchemy import create_engine
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 import os
-from dotenv import load_dotenv
 
-# 載入 .env 檔案
-load_dotenv()
+# 載入 .env 檔案（如果 python-dotenv 可用）
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except ImportError:
+    # 如果沒有 python-dotenv，跳過載入 .env
+    pass
 
 # 正確地從環境變數讀取 DATABASE_URL，否則用 sqlite 作為預設
 DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./test.db")
@@ -40,6 +44,7 @@ def update_database_schema():
         return
     
     # PostgreSQL 的欄位更新
+    conn = None
     try:
         # 解析 PostgreSQL 連接字串
         match = re.match(r'postgresql://([^:]+):([^@]+)@([^:]+):(\d+)/(.+)', DATABASE_URL)
@@ -56,6 +61,7 @@ def update_database_schema():
             password=password,
             database=dbname
         )
+        conn_created = True
         
         cur = conn.cursor()
         
@@ -90,7 +96,10 @@ def update_database_schema():
         
     except Exception as e:
         print(f"更新資料庫結構時發生錯誤: {e}")
-        if 'conn' in locals():
-            conn.rollback()
-            conn.close()
+        if conn is not None:
+            try:
+                conn.rollback()
+                conn.close()
+            except:
+                pass
 
