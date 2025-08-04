@@ -25,9 +25,20 @@ class CloudAvatarService:
         self.use_cloud_storage = os.getenv('USE_CLOUD_STORAGE', 'false').lower() == 'true'
         self.cloudinary_url = os.getenv('CLOUDINARY_URL')
         
+        # 診斷環境變數
+        logger.info(f"USE_CLOUD_STORAGE: {os.getenv('USE_CLOUD_STORAGE')}")
+        logger.info(f"CLOUDINARY_URL 是否設定: {'是' if self.cloudinary_url else '否'}")
+        if self.cloudinary_url:
+            # 只顯示 URL 的開頭部分，避免洩露敏感資訊
+            logger.info(f"CLOUDINARY_URL 開頭: {self.cloudinary_url[:20]}...")
+        
         # 初始化 Cloudinary
         if self.use_cloud_storage and self.cloudinary_url:
             try:
+                # 驗證 URL 格式
+                if not self.cloudinary_url.startswith('cloudinary://'):
+                    raise ValueError(f"Invalid CLOUDINARY_URL scheme. Expecting to start with 'cloudinary://', got: {self.cloudinary_url[:20]}...")
+                
                 # 延遲匯入，避免安裝問題
                 import cloudinary
                 cloudinary.config(cloudinary_url=self.cloudinary_url)
@@ -41,6 +52,8 @@ class CloudAvatarService:
                 logger.warning("將使用本地儲存作為備用方案")
                 self.use_cloud_storage = False
         else:
+            if self.use_cloud_storage and not self.cloudinary_url:
+                logger.error("啟用了雲端儲存但未設定 CLOUDINARY_URL")
             logger.warning("未啟用雲端儲存，將使用本地儲存（不適用於生產環境）")
     
     def validate_base64_image(self, base64_data: str) -> Image.Image:

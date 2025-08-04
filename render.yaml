@@ -16,3 +16,6 @@ services:
         fromService:
           type: secret
           name: cloudinary-url
+      # 臨時診斷用，請確認 secret 設定後移除
+      # - key: DEBUG_ENV
+      #   value: "true"
