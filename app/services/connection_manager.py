@@ -55,7 +55,6 @@ class ConnectionManager:
                 setattr(user_status, 'server_instance', self.server_instance if status == "online" else None)
                 if status == "online":
                     setattr(user_status, 'connected_at', datetime.now())
-                logger.info(f"Updated user {user_id} status to {status}")
             else:
                 # 再次確認用戶存在後才建立新記錄
                 user_check = db.query(User).filter(User.id == user_id).first()
@@ -74,7 +73,7 @@ class ConnectionManager:
                 logger.info(f"Created new user status record for user {user_id}")
             
             db.commit()
-            logger.info(f"Successfully committed status update for user {user_id}")
+            logger.info(f"Successfully updated user {user_id} status to {status}")
             
         except Exception as e:
             logger.error(f"Failed to update user status in database for user {user_id}: {e}")
@@ -105,6 +104,7 @@ class ConnectionManager:
     async def join_room(self, user_id: str, room_id: str):
         """用戶加入房間"""
         if user_id not in self.user_connections:
+            logger.warning(f"User {user_id} not connected when trying to join room {room_id}")
             return False
         
         websocket = self.user_connections[user_id]
@@ -114,6 +114,8 @@ class ConnectionManager:
         
         self.room_connections[room_id].append(websocket)
         self.user_rooms[user_id] = room_id
+        
+        logger.info(f"User {user_id} joined room {room_id}")
         
         await self.send_to_user(user_id, {
             "type": "joined_room",
@@ -127,9 +129,12 @@ class ConnectionManager:
             websocket = self.user_connections[user_id]
             if websocket in self.room_connections[room_id]:
                 self.room_connections[room_id].remove(websocket)
+                logger.info(f"User {user_id} left room {room_id}")
             
             if user_id in self.user_rooms:
                 del self.user_rooms[user_id]
+        else:
+            logger.warning(f"User {user_id} tried to leave room {room_id} but not found in connections or room")
     
     async def send_to_user(self, user_id: str, message: dict):
         """發送訊息給特定用戶"""

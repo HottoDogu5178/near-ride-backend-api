@@ -17,7 +17,9 @@ logging.basicConfig(
     ]
 )
 
-app = FastAPI()
+logger = logging.getLogger(__name__)
+
+app = FastAPI(title="Near Ride Backend API", version="1.0.0")
 
 # CORS 設定（允許 Flutter 串接）
 app.add_middleware(
@@ -31,7 +33,10 @@ app.add_middleware(
 # 啟動時自動建立資料表
 @app.on_event("startup")
 def startup():
+    logger.info("Starting Near Ride Backend API...")
+    logger.info("Creating database tables...")
     create_tables()
+    logger.info("API startup completed successfully")
 
 app.include_router(user_routes.router, prefix="/users")
 app.include_router(chat_routes.router)
@@ -42,4 +47,5 @@ app.include_router(static_routes.router, prefix="/static")
 
 @app.get("/")
 def read_root():
-    return {"message": "Hello from Render"}
+    logger.info("Root endpoint accessed")
+    return {"message": "Hello from Render", "status": "running"}

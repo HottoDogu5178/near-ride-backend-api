@@ -32,17 +32,22 @@ class FriendResponse(BaseModel):
 async def add_friend(request: FriendRequest, db: Session = Depends(get_db)):
     """新增好友關係"""
     try:
+        logger.info(f"Adding friend relationship: user {request.user_id} -> friend {request.friend_id}")
+        
         # 檢查用戶是否存在
         user = db.query(User).filter(User.id == request.user_id).first()
         friend = db.query(User).filter(User.id == request.friend_id).first()
         
         if not user:
+            logger.warning(f"Add friend failed: User {request.user_id} not found")
             raise HTTPException(status_code=404, detail="User not found")
         if not friend:
+            logger.warning(f"Add friend failed: Friend {request.friend_id} not found")
             raise HTTPException(status_code=404, detail="Friend not found")
         
         # 檢查是否已經是好友
         if friend in user.friends:
+            logger.warning(f"Add friend failed: Users {request.user_id} and {request.friend_id} are already friends")
             raise HTTPException(status_code=400, detail="Already friends")
         
         # 建立雙向好友關係
@@ -82,8 +87,11 @@ async def add_friend(request: FriendRequest, db: Session = Depends(get_db)):
 async def get_friends(user_id: int, db: Session = Depends(get_db)):
     """獲取用戶的好友列表"""
     try:
+        logger.info(f"Getting friends list for user {user_id}")
+        
         user = db.query(User).filter(User.id == user_id).first()
         if not user:
+            logger.warning(f"Get friends failed: User {user_id} not found")
             raise HTTPException(status_code=404, detail="User not found")
         
         friends_list = []
@@ -110,6 +118,8 @@ async def get_friends(user_id: int, db: Session = Depends(get_db)):
             }
             friends_list.append(friend_info)
         
+        logger.info(f"Retrieved {len(friends_list)} friends for user {user_id}")
+        
         return {
             "friends": friends_list,
             "total": len(friends_list)
@@ -125,10 +135,13 @@ async def get_friends(user_id: int, db: Session = Depends(get_db)):
 async def remove_friend(request: FriendRequest, db: Session = Depends(get_db)):
     """移除好友關係"""
     try:
+        logger.info(f"Removing friend relationship: user {request.user_id} -> friend {request.friend_id}")
+        
         user = db.query(User).filter(User.id == request.user_id).first()
         friend = db.query(User).filter(User.id == request.friend_id).first()
         
         if not user or not friend:
+            logger.warning(f"Remove friend failed: User {request.user_id} or friend {request.friend_id} not found")
             raise HTTPException(status_code=404, detail="User not found")
         
         # 移除雙向好友關係
@@ -153,9 +166,12 @@ async def remove_friend(request: FriendRequest, db: Session = Depends(get_db)):
 async def get_chat_history_api(room_id: str, limit: int = 50, offset: int = 0, db: Session = Depends(get_db)):
     """獲取聊天記錄 API"""
     try:
+        logger.info(f"Getting chat history for room {room_id}, limit: {limit}, offset: {offset}")
+        
         # 檢查聊天室是否存在
         room = db.query(ChatRoom).filter(ChatRoom.id == room_id).first()
         if not room:
+            logger.warning(f"Chat history request failed: Room {room_id} not found")
             raise HTTPException(status_code=404, detail="Chat room not found")
         
         # 獲取聊天記錄
@@ -173,6 +189,8 @@ async def get_chat_history_api(room_id: str, limit: int = 50, offset: int = 0, d
             }
             for msg in reversed(messages)
         ]
+        
+        logger.info(f"Retrieved {len(chat_history)} messages for room {room_id}")
         
         return {
             "room_id": room_id,

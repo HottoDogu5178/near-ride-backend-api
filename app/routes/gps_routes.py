@@ -34,9 +34,12 @@ class GPSLocationData(BaseModel):
 def record_gps_location(location_data: GPSLocationData, user_id: int, db: Session = Depends(get_db)):
     """記錄單個 GPS 定位點"""
     try:
+        logger.info(f"Recording GPS location for user {user_id}: {location_data.lat}, {location_data.lng}")
+        
         # 驗證用戶是否存在
         db_user = db.query(user.User).filter(user.User.id == user_id).first()
         if not db_user:
+            logger.warning(f"GPS location recording failed: User {user_id} not found")
             raise HTTPException(status_code=404, detail="用戶不存在")
         
         # 解析時間戳記
@@ -80,9 +83,12 @@ def get_user_locations(
 ):
     """獲取用戶的 GPS 定位歷史"""
     try:
+        logger.info(f"Getting GPS locations for user {user_id}, limit: {limit}")
+        
         # 驗證用戶是否存在
         db_user = db.query(user.User).filter(user.User.id == user_id).first()
         if not db_user:
+            logger.warning(f"GPS locations request failed: User {user_id} not found")
             raise HTTPException(status_code=404, detail="用戶不存在")
         
         # 基本查詢
@@ -100,6 +106,8 @@ def get_user_locations(
         # 按時間排序並限制數量
         locations = query.order_by(GPSLocation.timestamp.desc()).limit(limit).all()
         
+        logger.info(f"Retrieved {len(locations)} GPS locations for user {user_id}")
+        
         result = []
         for location in locations:
             result.append({
@@ -116,6 +124,7 @@ def get_user_locations(
         }
         
     except ValueError:
+        logger.warning(f"Invalid date format in GPS query for user {user_id}")
         raise HTTPException(status_code=400, detail="日期格式無效，請使用 YYYY-MM-DD 或 YYYY-MM-DD HH:MM:SS 格式")
     except HTTPException:
         raise
@@ -127,9 +136,12 @@ def get_user_locations(
 def get_user_locations_by_date(user_id: int, date: str, db: Session = Depends(get_db)):
     """獲取用戶指定日期的所有 GPS 定位"""
     try:
+        logger.info(f"Getting GPS locations for user {user_id} on date {date}")
+        
         # 驗證用戶是否存在
         db_user = db.query(user.User).filter(user.User.id == user_id).first()
         if not db_user:
+            logger.warning(f"GPS locations by date request failed: User {user_id} not found")
             raise HTTPException(status_code=404, detail="用戶不存在")
         
         # 解析日期
@@ -143,6 +155,8 @@ def get_user_locations_by_date(user_id: int, date: str, db: Session = Depends(ge
             GPSLocation.timestamp >= start_datetime,
             GPSLocation.timestamp <= end_datetime
         ).order_by(GPSLocation.timestamp).all()
+        
+        logger.info(f"Retrieved {len(locations)} GPS locations for user {user_id} on date {date}")
         
         result = []
         for location in locations:
@@ -161,6 +175,7 @@ def get_user_locations_by_date(user_id: int, date: str, db: Session = Depends(ge
         }
         
     except ValueError:
+        logger.warning(f"Invalid date format in GPS query by date for user {user_id}: {date}")
         raise HTTPException(status_code=400, detail="日期格式無效，請使用 YYYY-MM-DD 格式")
     except HTTPException:
         raise
@@ -177,9 +192,12 @@ def delete_user_locations(
 ):
     """刪除用戶的 GPS 定位記錄"""
     try:
+        logger.info(f"Deleting GPS locations for user {user_id}")
+        
         # 驗證用戶是否存在
         db_user = db.query(user.User).filter(user.User.id == user_id).first()
         if not db_user:
+            logger.warning(f"GPS deletion failed: User {user_id} not found")
             raise HTTPException(status_code=404, detail="用戶不存在")
         
         # 基本查詢
@@ -209,6 +227,7 @@ def delete_user_locations(
         }
         
     except ValueError:
+        logger.warning(f"Invalid date format in GPS deletion for user {user_id}")
         raise HTTPException(status_code=400, detail="日期格式無效，請使用 YYYY-MM-DD 格式")
     except HTTPException:
         raise

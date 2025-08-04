@@ -89,33 +89,44 @@ def create_user(user_data: UserCreate, db: Session = Depends(get_db)):
 # 1. 透過 userID 查詢使用者資料
 @router.get("/{user_id}", response_model=UserResponse)
 def get_user(user_id: int, db: Session = Depends(get_db)):
-    db_user = db.query(user.User).filter(user.User.id == user_id).first()
-    if not db_user:
-        raise HTTPException(status_code=404, detail="User not found")
-    
-    # 構建回應資料
-    hobbies_data = [
-        HobbyResponse(
-            id=hobby.id,
-            name=hobby.name,
-            description=hobby.description
-        )
-        for hobby in db_user.hobbies
-    ]
-    
-    # 使用 model_validate 創建回應物件
-    user_dict = {
-        "id": db_user.id,
-        "email": db_user.email,
-        "nickname": db_user.nickname,
-        "avatar_url": db_user.avatar_url,
-        "gender": db_user.gender,
-        "age": db_user.age,
-        "location": db_user.location,
-        "hobbies": hobbies_data
-    }
-    
-    return UserResponse.model_validate(user_dict)
+    try:
+        logger.info(f"Getting user information for user {user_id}")
+        
+        db_user = db.query(user.User).filter(user.User.id == user_id).first()
+        if not db_user:
+            logger.warning(f"Get user failed: User {user_id} not found")
+            raise HTTPException(status_code=404, detail="User not found")
+        
+        # 構建回應資料
+        hobbies_data = [
+            HobbyResponse(
+                id=hobby.id,
+                name=hobby.name,
+                description=hobby.description
+            )
+            for hobby in db_user.hobbies
+        ]
+        
+        # 使用 model_validate 創建回應物件
+        user_dict = {
+            "id": db_user.id,
+            "email": db_user.email,
+            "nickname": db_user.nickname,
+            "avatar_url": db_user.avatar_url,
+            "gender": db_user.gender,
+            "age": db_user.age,
+            "location": db_user.location,
+            "hobbies": hobbies_data
+        }
+        
+        logger.info(f"Successfully retrieved user information for user {user_id}")
+        return UserResponse.model_validate(user_dict)
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error getting user {user_id}: {e}")
+        raise HTTPException(status_code=500, detail="Failed to get user information")
 
 # 2. 編輯使用者資料
 @router.put("/{user_id}")
@@ -123,9 +134,12 @@ def get_user(user_id: int, db: Session = Depends(get_db)):
 def update_user(user_id: int, user_update: UserUpdate, request: Request, db: Session = Depends(get_db)):
     """更新用戶資料（包含頭像上傳）"""
     try:
+        logger.info(f"Updating user {user_id} information")
+        
         # 檢查用戶是否存在
         db_user = db.query(user.User).filter(user.User.id == user_id).first()
         if not db_user:
+            logger.warning(f"Update user failed: User {user_id} not found")
             raise HTTPException(status_code=404, detail="用戶不存在")
         
         new_avatar_url = None

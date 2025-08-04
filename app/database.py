@@ -2,17 +2,24 @@ from sqlalchemy import create_engine
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 import os
+import logging
+
+# 設定 logger
+logger = logging.getLogger(__name__)
 
 # 載入 .env 檔案（如果 python-dotenv 可用）
 try:
     from dotenv import load_dotenv
     load_dotenv()
+    logger.info("Successfully loaded .env file")
 except ImportError:
     # 如果沒有 python-dotenv，跳過載入 .env
+    logger.warning("python-dotenv not available, skipping .env file loading")
     pass
 
 # 正確地從環境變數讀取 DATABASE_URL，否則用 sqlite 作為預設
 DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./test.db")
+logger.info(f"Database URL configured: {'PostgreSQL' if 'postgresql' in DATABASE_URL else 'SQLite'}")
 
 engine = create_engine(DATABASE_URL, connect_args={"check_same_thread": False} if "sqlite" in DATABASE_URL else {}, isolation_level="AUTOCOMMIT")
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
@@ -28,7 +35,9 @@ def get_db():
 def create_tables():
     # 在這裡導入所有模型，避免循環導入
     from app.models import user, hobby, user_status, commute_route, room, chat, gps_route
+    logger.info("Creating database tables...")
     Base.metadata.create_all(bind=engine)
+    logger.info("Database tables created successfully")
 
 def update_database_schema():
     """
@@ -40,16 +49,18 @@ def update_database_schema():
     
     # 如果是 SQLite，直接使用 create_all
     if "sqlite" in DATABASE_URL:
+        logger.info("Using SQLite database, creating tables...")
         create_tables()
         return
     
     # PostgreSQL 的欄位更新
     conn = None
     try:
+        logger.info("Updating PostgreSQL database schema...")
         # 解析 PostgreSQL 連接字串
         match = re.match(r'postgresql://([^:]+):([^@]+)@([^:]+):(\d+)/(.+)', DATABASE_URL)
         if not match:
-            print("無法解析 DATABASE_URL")
+            logger.error("Unable to parse DATABASE_URL")
             return
             
         user, password, host, port, dbname = match.groups()
@@ -87,15 +98,15 @@ def update_database_schema():
         for column_name, column_type in required_columns.items():
             if column_name not in existing_columns:
                 cur.execute(f'ALTER TABLE users ADD COLUMN {column_name} {column_type};')
-                print(f'已新增 {column_name} 欄位')
+                logger.info(f'Added column {column_name} to users table')
         
         conn.commit()
         cur.close()
         conn.close()
-        print("資料庫結構更新完成")
+        logger.info("Database schema update completed successfully")
         
     except Exception as e:
-        print(f"更新資料庫結構時發生錯誤: {e}")
+        logger.error(f"Error updating database schema: {e}")
         if conn is not None:
             try:
                 conn.rollback()
