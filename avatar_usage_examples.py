@@ -238,18 +238,18 @@ def run_examples():
     print("=" * 60)
     
     print("\\n💡 重要說明：")
-    print("- 頭像 URL 會根據請求的域名和端口動態生成")
+    print("- 頭像儲存在 Cloudinary CDN 上，確保高可用性")
     print("- 支援 JPEG、PNG、WEBP 格式")
     print("- 圖片會自動調整大小並優化為 WEBP 格式")
     print("- 檔案大小限制：5MB")
     print("- 最大尺寸：1024x1024")
+    print("- 透過 HTTPS CDN 全球加速訪問")
     
     print("\\n🔗 API 端點摘要：")
     print("- PATCH/PUT /users/{user_id} - 更新用戶資料（包含頭像）")
     print("- POST /users/{user_id}/avatar - 專用頭像上傳")
     print("- GET /users/{user_id} - 獲取用戶資訊（包含頭像 URL）")
     print("- DELETE /users/{user_id}/avatar - 刪除頭像")
-    print("- GET /static/avatars/{filename} - 訪問頭像檔案")
 
 
 if __name__ == "__main__":

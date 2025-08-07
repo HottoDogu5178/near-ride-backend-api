@@ -45,16 +45,15 @@ class CloudAvatarService:
                 logger.info("Cloudinary 已初始化")
             except ImportError as e:
                 logger.error(f"Cloudinary 套件未安裝: {e}")
-                logger.warning("將使用本地儲存作為備用方案")
-                self.use_cloud_storage = False
+                raise ValueError("雲端儲存服務不可用")
             except Exception as e:
                 logger.error(f"Cloudinary 初始化失敗: {e}")
-                logger.warning("將使用本地儲存作為備用方案")
-                self.use_cloud_storage = False
+                raise ValueError("雲端儲存服務不可用")
         else:
             if self.use_cloud_storage and not self.cloudinary_url:
                 logger.error("啟用了雲端儲存但未設定 CLOUDINARY_URL")
-            logger.warning("未啟用雲端儲存，將使用本地儲存（不適用於生產環境）")
+            else:
+                logger.error("雲端儲存未啟用或未正確配置")
     
     def validate_base64_image(self, base64_data: str) -> Image.Image:
         """驗證 base64 圖片資料"""
@@ -143,51 +142,33 @@ class CloudAvatarService:
             logger.error(f"Cloudinary 上傳失敗: {e}")
             raise ValueError(f"雲端上傳失敗: {str(e)}")
     
-    def save_avatar_fallback(self, image_bytes: BytesIO, user_id: int) -> str:
-        """本地儲存備用方案（僅開發環境）"""
-        try:
-            # 在 Render 上使用 /tmp 目錄
-            upload_dir = "/tmp/avatars" if os.path.exists("/tmp") else "uploads/avatars"
-            os.makedirs(upload_dir, exist_ok=True)
-            
-            filename = f"avatar_{user_id}_{uuid.uuid4().hex[:8]}.webp"
-            filepath = os.path.join(upload_dir, filename)
-            
-            with open(filepath, 'wb') as f:
-                f.write(image_bytes.read())
-            
-            # 本地 URL（注意：在 Render 上重啟後會遺失）
-            return f"http://localhost:8001/static/avatars/{filename}"
-            
-        except Exception as e:
-            logger.error(f"本地儲存失敗: {e}")
-            raise ValueError(f"儲存失敗: {str(e)}")
+
     
     def save_avatar(self, avatar_base64: str, user_id: int, request_url: Optional[str] = None) -> str:
-        """儲存頭像（自動選擇雲端或本地）"""
+        """儲存頭像到雲端"""
         try:
             # 驗證和處理圖片
             image = self.validate_base64_image(avatar_base64)
             image_bytes = self.process_avatar_image(image)
             
-            # 選擇儲存方式
+            # 使用雲端儲存
             if self.use_cloud_storage and self.cloudinary_url:
                 return self.upload_to_cloudinary(image_bytes, user_id)
             else:
-                logger.warning("使用本地儲存 - 在生產環境中圖片會在重啟後遺失")
-                return self.save_avatar_fallback(image_bytes, user_id)
+                raise ValueError("雲端儲存未配置，無法儲存頭像")
                 
         except Exception as e:
             logger.error(f"頭像儲存失敗: {e}")
             raise ValueError(f"頭像處理失敗: {str(e)}")
     
     def delete_avatar(self, avatar_url: str) -> bool:
-        """刪除頭像"""
+        """刪除頭像（僅支援雲端）"""
         try:
             if self.use_cloud_storage and 'cloudinary' in avatar_url:
                 return self._delete_from_cloudinary(avatar_url)
             else:
-                return self._delete_local_avatar(avatar_url)
+                logger.warning(f"無法刪除非雲端頭像: {avatar_url}")
+                return False
                 
         except Exception as e:
             logger.error(f"刪除頭像失敗: {e}")
@@ -216,22 +197,7 @@ class CloudAvatarService:
         except Exception as e:
             logger.error(f"Cloudinary 刪除失敗: {e}")
             return False
-    
-    def _delete_local_avatar(self, avatar_url: str) -> bool:
-        """刪除本地檔案"""
-        try:
-            filename = avatar_url.split('/')[-1]
-            upload_dir = "/tmp/avatars" if os.path.exists("/tmp") else "uploads/avatars"
-            filepath = os.path.join(upload_dir, filename)
-            
-            if os.path.exists(filepath):
-                os.remove(filepath)
-                return True
-            return False
-            
-        except Exception as e:
-            logger.error(f"本地刪除失敗: {e}")
-            return False
+
 
 # 雲端頭像服務實例
 cloud_avatar_service = CloudAvatarService()

@@ -1,6 +1,6 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from app.routes import user_routes, chat_routes, friend_routes, hobby_routes, gps_routes, static_routes
+from app.routes import user_routes, chat_routes, friend_routes, hobby_routes, gps_routes
 from app.database import create_tables
 import app.models.chat  # ← 加這行才會建立 chat_messages 表
 import app.models.user_status  # ← 加這行才會建立 user_status 表
@@ -43,7 +43,6 @@ app.include_router(chat_routes.router)
 app.include_router(friend_routes.router, prefix="/friends")
 app.include_router(hobby_routes.router)
 app.include_router(gps_routes.router)
-app.include_router(static_routes.router, prefix="/static")
 
 @app.get("/")
 def read_root():
