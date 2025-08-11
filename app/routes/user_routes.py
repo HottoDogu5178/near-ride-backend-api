@@ -6,10 +6,11 @@ from app.models.user_status import UserStatus
 from app.models.hobby import Hobby
 from app.database import get_db
 from app.services.avatar_service import cloud_avatar_service
-from pydantic import BaseModel
+from pydantic import BaseModel, EmailStr, validator
 from typing import List, Optional
 from datetime import datetime, date
 import logging
+import re
 
 # 設定 logger
 logger = logging.getLogger(__name__)
@@ -17,11 +18,17 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 class UserCreate(BaseModel):
-    email: str
+    email: EmailStr
     password: str
+    
+    @validator('password')
+    def validate_password(cls, v):
+        if len(v) < 6:
+            raise ValueError('密碼至少需要6個字元')
+        return v
 
 class UserLogin(BaseModel):
-    email: str
+    email: EmailStr
     password: str
 
 class UserUpdate(BaseModel):
@@ -65,12 +72,14 @@ class UserResponse(BaseModel):
 @router.post("/")
 def create_user(user_data: UserCreate, db: Session = Depends(get_db)):
     try:
-        # 檢查信箱是否已存在（先行快速檢查，提升使用者體驗）
-        existing = db.query(user.User).filter(user.User.email == user_data.email).first()
-        if existing:
-            logger.error(f"Duplicate email registration attempted: {user_data.email}")
+        logger.info(f"Attempting to register new user with email: {user_data.email}")
+        
+        # 先檢查信箱是否已存在
+        existing_user = db.query(user.User).filter(user.User.email == user_data.email).first()
+        if existing_user:
+            logger.warning(f"Registration failed: Email already exists: {user_data.email}")
             raise HTTPException(status_code=400, detail="信箱重複")
-
+        
         # 建立新用戶
         new_user = user.User(email=user_data.email, password=user_data.password)
         db.add(new_user)
@@ -87,20 +96,31 @@ def create_user(user_data: UserCreate, db: Session = Depends(get_db)):
         
         logger.info(f"New user registered: ID {new_user.id}, email: {new_user.email}")
         return {"id": str(new_user.id), "email": new_user.email}
-    except IntegrityError as ie:
-        # 針對資料庫唯一鍵衝突（例如信箱唯一）做明確處理
+    
+    except HTTPException:
+        # 重新拋出 HTTPException（如信箱重複）
         db.rollback()
-        # 嘗試以多種方式判斷是否為 unique violation
-        pgcode = getattr(getattr(ie, "orig", None), "pgcode", None)
-        msg = str(getattr(ie, "orig", ie))
-        if pgcode == "23505" or "duplicate key value" in msg or "UniqueViolation" in msg or "ix_users_email" in msg or "users_email_key" in msg:
-            logger.error(f"Duplicate email registration attempted: {user_data.email}")
+        raise
+    except IntegrityError as e:
+        logger.error(f"Database integrity error during registration: {e}")
+        db.rollback()
+        
+        # 檢查是否為唯一約束違反錯誤
+        error_str = str(e.orig) if hasattr(e, 'orig') else str(e)
+        if "unique constraint" in error_str.lower() and "email" in error_str.lower():
+            logger.warning(f"Duplicate email constraint violation: {user_data.email}")
             raise HTTPException(status_code=400, detail="信箱重複")
-        logger.error(f"Integrity error during registration: {ie}")
-        raise HTTPException(status_code=400, detail="資料完整性錯誤")
+        elif "duplicate key" in error_str.lower() and "email" in error_str.lower():
+            logger.warning(f"Duplicate email key violation: {user_data.email}")
+            raise HTTPException(status_code=400, detail="信箱重複")
+        else:
+            # 其他完整性錯誤
+            logger.error(f"Unknown integrity error: {error_str}")
+            raise HTTPException(status_code=400, detail="數據完整性錯誤")
     except Exception as e:
         logger.error(f"User registration failed: {e}")
         db.rollback()
+        # 其他未知錯誤
         raise HTTPException(status_code=500, detail="註冊失敗")
 
 # 1. 透過 userID 查詢使用者資料
@@ -256,20 +276,30 @@ def update_user(user_id: int, user_update: UserUpdate, request: Request, db: Ses
 @router.post("/login")
 def login_user(login_data: UserLogin, db: Session = Depends(get_db)):
     try:
+        logger.info(f"Login attempt for email: {login_data.email}")
+        
+        # 基本輸入驗證
+        if not login_data.email or not login_data.password:
+            logger.warning("Login failed: Missing email or password")
+            raise HTTPException(status_code=400, detail="信箱和密碼不能為空")
+        
+        if len(login_data.password.strip()) == 0:
+            logger.warning("Login failed: Empty password")
+            raise HTTPException(status_code=400, detail="密碼不能為空")
+        
         # 查詢使用者
         db_user = db.query(user.User).filter(user.User.email == login_data.email).first()
         
         if not db_user:
             # 記錄使用者不存在的登入失敗
             logger.warning(f"Login failed: User not found for email: {login_data.email}")
-            # 明確提示是否註冊
-            raise HTTPException(status_code=404, detail="查無此信箱，是否註冊？")
+            raise HTTPException(status_code=404, detail="此信箱尚未註冊")
         
         # 驗證密碼 (這裡假設密碼是明文比較，實際應用中應該使用加密)
         if str(db_user.password) != login_data.password:
             # 記錄密碼錯誤的登入失敗
             logger.warning(f"Login failed: Invalid password for user ID: {db_user.id}, email: {login_data.email}")
-            raise HTTPException(status_code=401, detail="帳號或密碼錯誤")
+            raise HTTPException(status_code=401, detail="密碼錯誤")
         
         # 登入成功，更新用戶狀態
         user_status = db.query(UserStatus).filter(UserStatus.user_id == db_user.id).first()
@@ -287,12 +317,22 @@ def login_user(login_data: UserLogin, db: Session = Depends(get_db)):
         db.commit()
         
         logger.info(f"Login successful for user ID: {db_user.id}, email: {login_data.email}")
+        
+        # 準備用戶信息回應
+        user_info = {
+            "id": str(db_user.id),
+            "email": db_user.email,
+            "nickname": getattr(db_user, 'nickname', None),
+            "avatar_url": getattr(db_user, 'avatar_url', None),
+            "gender": getattr(db_user, 'gender', None),
+            "age": getattr(db_user, 'age', None),
+            "location": getattr(db_user, 'location', None)
+        }
+        
         return {
             "message": "登入成功",
-            "user": {
-                "id": str(db_user.id),
-                "email": db_user.email
-            }
+            "user": user_info,
+            "login_time": datetime.now().isoformat()
         }
         
     except HTTPException:
