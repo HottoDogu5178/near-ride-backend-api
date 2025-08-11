@@ -21,11 +21,6 @@ class UserCreate(BaseModel):
     email: EmailStr
     password: str
     
-    @validator('password')
-    def validate_password(cls, v):
-        if len(v) < 6:
-            raise ValueError('密碼至少需要6個字元')
-        return v
 
 class UserLogin(BaseModel):
     email: EmailStr
