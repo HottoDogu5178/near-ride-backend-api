@@ -1,5 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
+from sqlalchemy.exc import IntegrityError
 from app.models import user
 from app.models.user_status import UserStatus
 from app.models.hobby import Hobby
@@ -64,6 +65,12 @@ class UserResponse(BaseModel):
 @router.post("/")
 def create_user(user_data: UserCreate, db: Session = Depends(get_db)):
     try:
+        # 檢查信箱是否已存在（先行快速檢查，提升使用者體驗）
+        existing = db.query(user.User).filter(user.User.email == user_data.email).first()
+        if existing:
+            logger.error(f"Duplicate email registration attempted: {user_data.email}")
+            raise HTTPException(status_code=400, detail="信箱重複")
+
         # 建立新用戶
         new_user = user.User(email=user_data.email, password=user_data.password)
         db.add(new_user)
@@ -80,7 +87,17 @@ def create_user(user_data: UserCreate, db: Session = Depends(get_db)):
         
         logger.info(f"New user registered: ID {new_user.id}, email: {new_user.email}")
         return {"id": str(new_user.id), "email": new_user.email}
-    
+    except IntegrityError as ie:
+        # 針對資料庫唯一鍵衝突（例如信箱唯一）做明確處理
+        db.rollback()
+        # 嘗試以多種方式判斷是否為 unique violation
+        pgcode = getattr(getattr(ie, "orig", None), "pgcode", None)
+        msg = str(getattr(ie, "orig", ie))
+        if pgcode == "23505" or "duplicate key value" in msg or "UniqueViolation" in msg or "ix_users_email" in msg or "users_email_key" in msg:
+            logger.error(f"Duplicate email registration attempted: {user_data.email}")
+            raise HTTPException(status_code=400, detail="信箱重複")
+        logger.error(f"Integrity error during registration: {ie}")
+        raise HTTPException(status_code=400, detail="資料完整性錯誤")
     except Exception as e:
         logger.error(f"User registration failed: {e}")
         db.rollback()
@@ -245,7 +262,8 @@ def login_user(login_data: UserLogin, db: Session = Depends(get_db)):
         if not db_user:
             # 記錄使用者不存在的登入失敗
             logger.warning(f"Login failed: User not found for email: {login_data.email}")
-            raise HTTPException(status_code=401, detail="帳號或密碼錯誤")
+            # 明確提示是否註冊
+            raise HTTPException(status_code=404, detail="查無此信箱，是否註冊？")
         
         # 驗證密碼 (這裡假設密碼是明文比較，實際應用中應該使用加密)
         if str(db_user.password) != login_data.password:
