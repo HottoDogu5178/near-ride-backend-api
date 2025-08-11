@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.routes import user_routes, chat_routes, friend_routes, hobby_routes, gps_routes
-from app.database import create_tables
+from app.database import create_tables, initialize_hobbies
 import app.models.chat  # ← 加這行才會建立 chat_messages 表
 import app.models.user_status  # ← 加這行才會建立 user_status 表
 import app.models.hobby  # ← 加這行才會建立 hobbies 表
@@ -36,6 +36,8 @@ def startup():
     logger.info("Starting Near Ride Backend API...")
     logger.info("Creating database tables...")
     create_tables()
+    logger.info("Initializing default hobbies data...")
+    initialize_hobbies()
     logger.info("API startup completed successfully")
 
 app.include_router(user_routes.router, prefix="/users")
