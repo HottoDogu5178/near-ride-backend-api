@@ -39,6 +39,7 @@ class UserUpdate(BaseModel):
     age: Optional[int] = None
     location: Optional[str] = None
     hobby_ids: Optional[List[int]] = None
+    custom_hobby_description: Optional[str] = None  # 自定義興趣描述
 
 class AvatarUpload(BaseModel):
     avatar_base64: str  # base64 編碼的圖片資料
@@ -60,6 +61,19 @@ class UserResponse(BaseModel):
     age: int | None = None
     location: str | None = None
     hobbies: list[HobbyResponse] = []
+    
+    class Config:
+        from_attributes = True
+
+class ApiUserResponse(BaseModel):
+    """API 專用的用戶回應格式"""
+    nickname: str | None = None
+    gender: str | None = None
+    age: int | None = None
+    avatar_url: str | None = None
+    hobbies: list[HobbyResponse] = []
+    custom_hobby_description: str | None = None
+    location: str | None = None
     
     class Config:
         from_attributes = True
@@ -117,6 +131,54 @@ def create_user(user_data: UserCreate, db: Session = Depends(get_db)):
         db.rollback()
         # 其他未知錯誤
         raise HTTPException(status_code=500, detail="註冊失敗")
+
+# API 專用端點 - 取得用戶資料（需要放在 /{user_id} 之前）
+@router.get("/api/{user_id}", response_model=ApiUserResponse)
+def get_user_api(user_id: int, db: Session = Depends(get_db)):
+    """
+    API 專用的用戶資料端點
+    回傳前端需要的用戶資料格式
+    """
+    try:
+        logger.info(f"Getting user API data for user {user_id}")
+        
+        db_user = db.query(user.User).filter(user.User.id == user_id).first()
+        if not db_user:
+            logger.warning(f"Get user API failed: User {user_id} not found")
+            raise HTTPException(status_code=404, detail="用戶不存在")
+        
+        # 構建興趣資料
+        hobbies_data = [
+            HobbyResponse(
+                id=hobby.id,
+                name=hobby.name,
+                description=hobby.description
+            )
+            for hobby in db_user.hobbies
+        ]
+        
+        # 取得自定義興趣描述
+        custom_hobby_description = getattr(db_user, 'custom_hobby_description', None)
+        
+        # 構建 API 回應資料
+        api_response = ApiUserResponse(
+            nickname=db_user.nickname,
+            gender=db_user.gender,
+            age=db_user.age,
+            avatar_url=db_user.avatar_url,
+            hobbies=hobbies_data,
+            custom_hobby_description=custom_hobby_description,
+            location=db_user.location
+        )
+        
+        logger.info(f"Successfully retrieved API user data for user {user_id}")
+        return api_response
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error getting user API data {user_id}: {e}")
+        raise HTTPException(status_code=500, detail="獲取用戶資料失敗")
 
 # 1. 透過 userID 查詢使用者資料
 @router.get("/{user_id}", response_model=UserResponse)
@@ -221,6 +283,8 @@ def update_user(user_id: int, user_update: UserUpdate, request: Request, db: Ses
             setattr(db_user, 'age', user_update.age)
         if user_update.location is not None:
             setattr(db_user, 'location', user_update.location)
+        if user_update.custom_hobby_description is not None:
+            setattr(db_user, 'custom_hobby_description', user_update.custom_hobby_description)
         
         # 更新興趣關聯
         if user_update.hobby_ids is not None:

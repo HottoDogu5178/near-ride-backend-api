@@ -29,6 +29,7 @@ class User(Base):
     gender = Column(String, nullable=True)  # 性別 (male, female, other)
     age = Column(Integer, nullable=True)  # 年齡
     location = Column(String, nullable=True)  # 居住地
+    custom_hobby_description = Column(Text, nullable=True)  # 自定義興趣描述
     
     # 關聯關係
     hobbies = relationship("Hobby", secondary=user_hobbies, back_populates="users")
